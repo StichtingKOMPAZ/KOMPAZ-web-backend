@@ -1,0 +1,118 @@
+using FluentAssertions;
+using Kompaz.Application.Users;
+using Kompaz.Domain.Enums;
+using Kompaz.Presentation.Endpoints;
+using NUnit.Framework;
+using System.Net;
+using System.Net.Http.Json;
+
+namespace Kompaz.Application.FunctionalTests.Users;
+
+[TestFixture]
+internal sealed class UserCrudTests : ApiTestBase
+{
+	[Test]
+	public async Task AUserCanBeReadBackById()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+
+		var user = await administrator.GetFromJsonAsync<UserDto>($"/api/users/{invited.Id}", JsonOptions.Web);
+
+		user.Should().NotBeNull();
+		user!.Email.Should().Be("nieuw@kompaz.local");
+		user.OrganizationName.Should().NotBeNullOrWhiteSpace();
+	}
+
+	[Test]
+	public async Task ReadingAnUnknownUserReturnsNotFound()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+
+		var response = await administrator.GetAsync($"/api/users/{Guid.NewGuid()}");
+
+		response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+	}
+
+	[Test]
+	public async Task UpdatingChangesTheNameAndRole()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+
+		var response = await administrator.PutAsJsonAsync(
+			$"/api/users/{invited.Id}",
+			new UserEndpoints.UpdateUserRequest("Hernoemde Collega", UserRole.Administrator), JsonOptions.Web);
+		var updated = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.OK);
+		updated!.Name.Should().Be("Hernoemde Collega");
+		updated.Role.Should().Be(UserRole.Administrator);
+		updated.Email.Should().Be("nieuw@kompaz.local");
+	}
+
+	[Test]
+	public async Task UpdatingRejectsAnEmptyName()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+
+		var response = await administrator.PutAsJsonAsync(
+			$"/api/users/{invited.Id}",
+			new UserEndpoints.UpdateUserRequest(" ", UserRole.Member), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+	}
+
+	[Test]
+	public async Task DeletingRemovesTheUser()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+
+		var deleted = await administrator.DeleteAsync($"/api/users/{invited.Id}");
+		var readBack = await administrator.GetAsync($"/api/users/{invited.Id}");
+
+		deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+		readBack.StatusCode.Should().Be(HttpStatusCode.NotFound);
+	}
+
+	[Test]
+	public async Task DeletingYourOwnAccountIsRefused()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var me = await administrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+
+		var response = await administrator.DeleteAsync($"/api/users/{me!.Id}");
+
+		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+	}
+
+	[Test]
+	public async Task MembersMayReadThemselvesButNotChangeAnyone()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var member = await InviteAndSignInAsync(administrator, "lid@kompaz.local", "Gewoon Lid", UserRole.Member);
+		var me = await member.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+
+		var read = await member.GetAsync($"/api/users/{me!.Id}");
+		var write = await member.PutAsJsonAsync(
+			$"/api/users/{me.Id}",
+			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.Member), JsonOptions.Web);
+
+		read.StatusCode.Should().Be(HttpStatusCode.OK);
+		write.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	[Test]
+	public async Task AdministratorsMayNotDeleteAPlatformAdministrator()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var response = await administrator.DeleteAsync($"/api/users/{me!.Id}");
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+}

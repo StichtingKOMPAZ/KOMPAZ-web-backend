@@ -1,0 +1,28 @@
+{
+	"$schema": "https://raw.githubusercontent.com/DotNetAnalyzers/StyleCopAnalyzers/master/StyleCop.Analyzers/StyleCop.Analyzers/Settings/stylecop.schema.json",
+	"settings": {
+		"documentationRules": {
+			"companyName": "KOMPAZ",
+			"xmlHeader": false,
+			"documentationCulture": "en-US",
+			"documentInterfaces": false,
+			"documentExposedElements": false,
+			"documentInternalElements": false,
+			"documentPrivateElements": false,
+			"documentPrivateFields": false
+		},
+		"indentation": {
+			"indentationSize": 4,
+			"tabSize": 4,
+			"useTabs": true
+		},
+		"orderingRules": {
+			"systemUsingDirectivesFirst": false,
+			"usingDirectivesPlacement": "outsideNamespace",
+			"blankLinesBetweenUsingGroups": "omit"
+		},
+		"layoutRules": {
+			"newlineAtEndOfFile": "require"
+		}
+	}
+}
