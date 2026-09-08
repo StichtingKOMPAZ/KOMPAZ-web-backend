@@ -25,12 +25,10 @@ public class CreateOrganizationCommandValidator : AbstractValidator<CreateOrgani
 public class CreateOrganizationCommandHandler : IRequestHandler<CreateOrganizationCommand, OrganizationDto>
 {
 	private readonly IApplicationDbContext _context;
-	private readonly TimeProvider _timeProvider;
 
-	public CreateOrganizationCommandHandler(IApplicationDbContext context, TimeProvider timeProvider)
+	public CreateOrganizationCommandHandler(IApplicationDbContext context)
 	{
 		_context = context;
-		_timeProvider = timeProvider;
 	}
 
 	public async Task<OrganizationDto> Handle(CreateOrganizationCommand request, CancellationToken cancellationToken)
@@ -42,13 +40,7 @@ public class CreateOrganizationCommandHandler : IRequestHandler<CreateOrganizati
 			throw new ConflictException($"An organization named \"{name}\" already exists.");
 		}
 
-		var now = _timeProvider.GetUtcNow();
-		var entity = new Organization
-		{
-			Name = name,
-			CreatedUtc = now,
-			UpdatedUtc = now,
-		};
+		var entity = new Organization { Name = name };
 
 		_context.Organizations.Add(entity);
 		await _context.SaveChangesAsync(cancellationToken);

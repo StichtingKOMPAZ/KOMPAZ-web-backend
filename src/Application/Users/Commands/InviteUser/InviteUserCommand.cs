@@ -4,6 +4,7 @@ using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
+using Kompaz.Domain.Events;
 
 namespace Kompaz.Application.Users.Commands.InviteUser;
 
@@ -42,20 +43,17 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 	private readonly IApplicationDbContext _context;
 	private readonly IUser _currentUser;
 	private readonly LoginTokenIssuer _tokenIssuer;
-	private readonly IAuthenticationEmailSender _emailSender;
 	private readonly TimeProvider _timeProvider;
 
 	public InviteUserCommandHandler(
 		IApplicationDbContext context,
 		IUser currentUser,
 		LoginTokenIssuer tokenIssuer,
-		IAuthenticationEmailSender emailSender,
 		TimeProvider timeProvider)
 	{
 		_context = context;
 		_currentUser = currentUser;
 		_tokenIssuer = tokenIssuer;
-		_emailSender = emailSender;
 		_timeProvider = timeProvider;
 	}
 
@@ -80,9 +78,9 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 			: RenewInvitation(existing, organizationId, request, now);
 
 		string token = await _tokenIssuer.IssueAsync(user, LoginTokenPurpose.Invitation, cancellationToken);
-		await _context.SaveChangesAsync(cancellationToken);
+		user.AddDomainEvent(new InvitationIssuedEvent(user.Id, user.Email, user.Name, organization.Name, token));
 
-		await _emailSender.SendInvitationAsync(user.Email, user.Name, organization.Name, token, cancellationToken);
+		await _context.SaveChangesAsync(cancellationToken);
 
 		return await _context.Users
 			.AsNoTracking()
@@ -118,7 +116,7 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 
 		OrganizationAccess.EnsureCanManageRole(_currentUser, existing.Role);
 
-		existing.Update(request.Name, request.Role, now);
+		existing.Update(request.Name, request.Role);
 		existing.RecordInvitationSent(now);
 
 		return existing;

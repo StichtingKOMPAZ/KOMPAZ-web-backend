@@ -1,5 +1,6 @@
 using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Application.Common.Security;
 using Kompaz.Application.Users;
 using Kompaz.Domain.Entities;
 using Microsoft.Extensions.Logging;
@@ -9,6 +10,11 @@ namespace Kompaz.Application.Authentication.Commands.RefreshAccessToken;
 /// <summary>
 /// Exchanges a refresh token for a new access token and a successor refresh token, sliding the session forward.
 /// </summary>
+/// <remarks>
+/// Anonymous by necessity: the refresh token is the credential, and the access token it replaces has
+/// usually expired by the time a client needs this.
+/// </remarks>
+[AllowAnonymous]
 public record RefreshAccessTokenCommand(string RefreshToken) : IRequest<AuthenticationResultDto>;
 
 public class RefreshAccessTokenCommandValidator : AbstractValidator<RefreshAccessTokenCommand>

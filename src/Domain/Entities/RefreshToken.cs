@@ -1,3 +1,5 @@
+using Kompaz.Domain.Common;
+
 namespace Kompaz.Domain.Entities;
 
 /// <summary>
@@ -12,10 +14,8 @@ namespace Kompaz.Domain.Entities;
 /// lets a replayed token revoke the whole chain rather than just itself.
 /// </para>
 /// </summary>
-public class RefreshToken
+public class RefreshToken : Entity
 {
-	public Guid Id { get; set; }
-
 	public Guid UserId { get; set; }
 
 	public User User { get; set; } = null!;

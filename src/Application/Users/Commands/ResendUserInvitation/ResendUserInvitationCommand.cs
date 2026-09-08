@@ -4,6 +4,7 @@ using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
+using Kompaz.Domain.Events;
 
 namespace Kompaz.Application.Users.Commands.ResendUserInvitation;
 
@@ -27,20 +28,17 @@ public class ResendUserInvitationCommandHandler : IRequestHandler<ResendUserInvi
 	private readonly IApplicationDbContext _context;
 	private readonly IUser _currentUser;
 	private readonly LoginTokenIssuer _tokenIssuer;
-	private readonly IAuthenticationEmailSender _emailSender;
 	private readonly TimeProvider _timeProvider;
 
 	public ResendUserInvitationCommandHandler(
 		IApplicationDbContext context,
 		IUser currentUser,
 		LoginTokenIssuer tokenIssuer,
-		IAuthenticationEmailSender emailSender,
 		TimeProvider timeProvider)
 	{
 		_context = context;
 		_currentUser = currentUser;
 		_tokenIssuer = tokenIssuer;
-		_emailSender = emailSender;
 		_timeProvider = timeProvider;
 	}
 
@@ -61,9 +59,8 @@ public class ResendUserInvitationCommandHandler : IRequestHandler<ResendUserInvi
 
 		string token = await _tokenIssuer.IssueAsync(user, LoginTokenPurpose.Invitation, cancellationToken);
 		user.RecordInvitationSent(_timeProvider.GetUtcNow());
+		user.AddDomainEvent(new InvitationIssuedEvent(user.Id, user.Email, user.Name, user.Organization.Name, token));
 
 		await _context.SaveChangesAsync(cancellationToken);
-
-		await _emailSender.SendInvitationAsync(user.Email, user.Name, user.Organization.Name, token, cancellationToken);
 	}
 }

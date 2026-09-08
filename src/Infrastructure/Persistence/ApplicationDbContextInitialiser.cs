@@ -63,12 +63,7 @@ public class ApplicationDbContextInitialiser
 
 		var now = _timeProvider.GetUtcNow();
 
-		var organization = new Organization
-		{
-			Name = PlatformOrganizationName,
-			CreatedUtc = now,
-			UpdatedUtc = now,
-		};
+		var organization = new Organization { Name = PlatformOrganizationName };
 
 		_context.Organizations.Add(organization);
 

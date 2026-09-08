@@ -1,5 +1,6 @@
 using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Application.Common.Security;
 using Kompaz.Application.Users;
 
 namespace Kompaz.Application.Authentication.Commands.RedeemLoginToken;
@@ -7,6 +8,10 @@ namespace Kompaz.Application.Authentication.Commands.RedeemLoginToken;
 /// <summary>
 /// Exchanges the secret from a sign-in link for an access token. Redeeming a link also activates an invited user.
 /// </summary>
+/// <remarks>
+/// Anonymous by necessity: the secret from the link is the credential being presented.
+/// </remarks>
+[AllowAnonymous]
 public record RedeemLoginTokenCommand(string Token) : IRequest<AuthenticationResultDto>;
 
 public class RedeemLoginTokenCommandValidator : AbstractValidator<RedeemLoginTokenCommand>

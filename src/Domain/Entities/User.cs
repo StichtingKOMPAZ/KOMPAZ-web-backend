@@ -1,3 +1,4 @@
+using Kompaz.Domain.Common;
 using Kompaz.Domain.Enums;
 
 namespace Kompaz.Domain.Entities;
@@ -5,10 +6,8 @@ namespace Kompaz.Domain.Entities;
 /// <summary>
 /// A person who can sign in. Users authenticate with an emailed single-use link rather than a password.
 /// </summary>
-public class User
+public class User : AuditableEntity
 {
-	public Guid Id { get; set; }
-
 	public Guid OrganizationId { get; set; }
 
 	public Organization Organization { get; set; } = null!;
@@ -25,10 +24,6 @@ public class User
 	public UserRole Role { get; set; }
 
 	public UserStatus Status { get; set; }
-
-	public DateTimeOffset CreatedUtc { get; set; }
-
-	public DateTimeOffset UpdatedUtc { get; set; }
 
 	public DateTimeOffset? InvitedUtc { get; set; }
 
@@ -54,8 +49,6 @@ public class User
 			Name = name.Trim(),
 			Role = role,
 			Status = UserStatus.Invited,
-			CreatedUtc = now,
-			UpdatedUtc = now,
 			InvitedUtc = now,
 		};
 
@@ -71,7 +64,6 @@ public class User
 
 		Status = UserStatus.Active;
 		ActivatedUtc = now;
-		UpdatedUtc = now;
 	}
 
 	public void RecordLogin(DateTimeOffset now)
@@ -82,15 +74,14 @@ public class User
 	public void RecordInvitationSent(DateTimeOffset now)
 	{
 		InvitedUtc = now;
-		UpdatedUtc = now;
 	}
 
 	/// <summary>
 	/// Applies an administrator's edit, which may also move the user between roles.
 	/// </summary>
-	public void Update(string name, UserRole role, DateTimeOffset now)
+	public void Update(string name, UserRole role)
 	{
-		Rename(name, now);
+		Rename(name);
 		Role = role;
 	}
 
@@ -98,9 +89,8 @@ public class User
 	/// Applies a user's own edit to their profile. The email address is the sign-in identity and the role is not
 	/// self-assignable, so neither moves here.
 	/// </summary>
-	public void Rename(string name, DateTimeOffset now)
+	public void Rename(string name)
 	{
 		Name = name.Trim();
-		UpdatedUtc = now;
 	}
 }

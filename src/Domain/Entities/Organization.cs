@@ -1,23 +1,18 @@
+using Kompaz.Domain.Common;
+
 namespace Kompaz.Domain.Entities;
 
 /// <summary>
 /// A tenant. Every user belongs to exactly one organization.
 /// </summary>
-public class Organization
+public class Organization : AuditableEntity
 {
-	public Guid Id { get; set; }
-
 	public string Name { get; set; } = string.Empty;
-
-	public DateTimeOffset CreatedUtc { get; set; }
-
-	public DateTimeOffset UpdatedUtc { get; set; }
 
 	public ICollection<User> Users { get; } = [];
 
-	public void Rename(string name, DateTimeOffset now)
+	public void Rename(string name)
 	{
 		Name = name;
-		UpdatedUtc = now;
 	}
 }

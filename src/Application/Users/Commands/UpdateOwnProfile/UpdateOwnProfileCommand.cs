@@ -29,13 +29,11 @@ public class UpdateOwnProfileCommandHandler : IRequestHandler<UpdateOwnProfileCo
 {
 	private readonly IApplicationDbContext _context;
 	private readonly IUser _currentUser;
-	private readonly TimeProvider _timeProvider;
 
-	public UpdateOwnProfileCommandHandler(IApplicationDbContext context, IUser currentUser, TimeProvider timeProvider)
+	public UpdateOwnProfileCommandHandler(IApplicationDbContext context, IUser currentUser)
 	{
 		_context = context;
 		_currentUser = currentUser;
-		_timeProvider = timeProvider;
 	}
 
 	public async Task<UserDto> Handle(UpdateOwnProfileCommand request, CancellationToken cancellationToken)
@@ -46,7 +44,7 @@ public class UpdateOwnProfileCommandHandler : IRequestHandler<UpdateOwnProfileCo
 			.SingleOrDefaultAsync(candidate => candidate.Id == userId, cancellationToken)
 			?? throw new AuthenticationFailedException("The authenticated user no longer exists.");
 
-		user.Rename(request.Name, _timeProvider.GetUtcNow());
+		user.Rename(request.Name);
 		await _context.SaveChangesAsync(cancellationToken);
 
 		return await _context.Users

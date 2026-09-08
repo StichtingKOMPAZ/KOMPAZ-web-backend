@@ -3,6 +3,7 @@ using Kompaz.Application.Common.Security;
 using Kompaz.Infrastructure.Authentication;
 using Kompaz.Infrastructure.Email;
 using Kompaz.Infrastructure.Persistence;
+using Kompaz.Infrastructure.Persistence.Interceptors;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -30,8 +31,15 @@ public static class ConfigureServices
 		IConfiguration configuration,
 		IHostEnvironment environment)
 	{
-		services.AddDbContext<ApplicationDbContext>(options =>
-			options.UseNpgsql(configuration.GetConnectionString("KompazDb")));
+		services.AddScoped<AuditableEntityInterceptor>();
+		services.AddScoped<DispatchDomainEventsInterceptor>();
+
+		services.AddDbContext<ApplicationDbContext>((provider, options) =>
+			options
+				.UseNpgsql(configuration.GetConnectionString("KompazDb"))
+				.AddInterceptors(
+					provider.GetRequiredService<AuditableEntityInterceptor>(),
+					provider.GetRequiredService<DispatchDomainEventsInterceptor>()));
 
 		services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 		services.AddScoped<ApplicationDbContextInitialiser>();

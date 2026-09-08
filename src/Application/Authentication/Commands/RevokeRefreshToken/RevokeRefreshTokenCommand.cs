@@ -1,4 +1,5 @@
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Application.Common.Security;
 
 namespace Kompaz.Application.Authentication.Commands.RevokeRefreshToken;
 
@@ -6,6 +7,10 @@ namespace Kompaz.Application.Authentication.Commands.RevokeRefreshToken;
 /// Ends the session a refresh token belongs to. Signing out succeeds whether or not the token is still valid, so a
 /// client can always clear its credentials without having to interpret an error.
 /// </summary>
+/// <remarks>
+/// Anonymous by necessity: signing out has to work for a client whose access token has already expired.
+/// </remarks>
+[AllowAnonymous]
 public record RevokeRefreshTokenCommand(string RefreshToken) : IRequest;
 
 public class RevokeRefreshTokenCommandValidator : AbstractValidator<RevokeRefreshTokenCommand>

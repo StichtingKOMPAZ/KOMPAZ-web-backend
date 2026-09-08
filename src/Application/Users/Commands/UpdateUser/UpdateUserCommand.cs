@@ -32,13 +32,11 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 {
 	private readonly IApplicationDbContext _context;
 	private readonly IUser _currentUser;
-	private readonly TimeProvider _timeProvider;
 
-	public UpdateUserCommandHandler(IApplicationDbContext context, IUser currentUser, TimeProvider timeProvider)
+	public UpdateUserCommandHandler(IApplicationDbContext context, IUser currentUser)
 	{
 		_context = context;
 		_currentUser = currentUser;
-		_timeProvider = timeProvider;
 	}
 
 	public async Task<UserDto> Handle(UpdateUserCommand request, CancellationToken cancellationToken)
@@ -60,7 +58,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 			await EnsureAPlatformAdministratorRemainsAsync(user, request.Role, cancellationToken);
 		}
 
-		user.Update(request.Name, request.Role, _timeProvider.GetUtcNow());
+		user.Update(request.Name, request.Role);
 		await _context.SaveChangesAsync(cancellationToken);
 
 		return await _context.Users

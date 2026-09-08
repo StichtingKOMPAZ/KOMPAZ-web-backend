@@ -29,13 +29,11 @@ public class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrganizati
 {
 	private readonly IApplicationDbContext _context;
 	private readonly IUser _user;
-	private readonly TimeProvider _timeProvider;
 
-	public UpdateOrganizationCommandHandler(IApplicationDbContext context, IUser user, TimeProvider timeProvider)
+	public UpdateOrganizationCommandHandler(IApplicationDbContext context, IUser user)
 	{
 		_context = context;
 		_user = user;
-		_timeProvider = timeProvider;
 	}
 
 	public async Task<OrganizationDto> Handle(UpdateOrganizationCommand request, CancellationToken cancellationToken)
@@ -56,7 +54,7 @@ public class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrganizati
 			throw new ConflictException($"An organization named \"{name}\" already exists.");
 		}
 
-		entity.Rename(name, _timeProvider.GetUtcNow());
+		entity.Rename(name);
 		await _context.SaveChangesAsync(cancellationToken);
 
 		return await _context.Organizations

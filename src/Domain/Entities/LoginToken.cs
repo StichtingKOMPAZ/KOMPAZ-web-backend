@@ -1,3 +1,4 @@
+using Kompaz.Domain.Common;
 using Kompaz.Domain.Enums;
 
 namespace Kompaz.Domain.Entities;
@@ -5,10 +6,8 @@ namespace Kompaz.Domain.Entities;
 /// <summary>
 /// A single-use credential emailed to a user. Only the hash of the token is stored, never the value from the link.
 /// </summary>
-public class LoginToken
+public class LoginToken : Entity
 {
-	public Guid Id { get; set; }
-
 	public Guid UserId { get; set; }
 
 	public User User { get; set; } = null!;

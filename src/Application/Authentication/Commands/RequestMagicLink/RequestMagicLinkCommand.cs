@@ -1,6 +1,8 @@
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Application.Common.Security;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
+using Kompaz.Domain.Events;
 using Microsoft.Extensions.Logging;
 
 namespace Kompaz.Application.Authentication.Commands.RequestMagicLink;
@@ -9,6 +11,10 @@ namespace Kompaz.Application.Authentication.Commands.RequestMagicLink;
 /// Emails a sign-in link to the address supplied. Succeeds whether or not the address belongs to a user,
 /// so the endpoint cannot be used to discover who has an account.
 /// </summary>
+/// <remarks>
+/// Anonymous by necessity: somebody who cannot sign in is the only person who needs this.
+/// </remarks>
+[AllowAnonymous]
 public record RequestMagicLinkCommand(string Email) : IRequest;
 
 public class RequestMagicLinkCommandValidator : AbstractValidator<RequestMagicLinkCommand>
@@ -26,18 +32,15 @@ public class RequestMagicLinkCommandHandler : IRequestHandler<RequestMagicLinkCo
 {
 	private readonly IApplicationDbContext _context;
 	private readonly LoginTokenIssuer _tokenIssuer;
-	private readonly IAuthenticationEmailSender _emailSender;
 	private readonly ILogger<RequestMagicLinkCommandHandler> _logger;
 
 	public RequestMagicLinkCommandHandler(
 		IApplicationDbContext context,
 		LoginTokenIssuer tokenIssuer,
-		IAuthenticationEmailSender emailSender,
 		ILogger<RequestMagicLinkCommandHandler> logger)
 	{
 		_context = context;
 		_tokenIssuer = tokenIssuer;
-		_emailSender = emailSender;
 		_logger = logger;
 	}
 
@@ -58,8 +61,8 @@ public class RequestMagicLinkCommandHandler : IRequestHandler<RequestMagicLinkCo
 		// them just the same, and minting an invitation here would let anybody who knows the address retire the
 		// invitation an administrator sent, over and over. Reissuing that one is the administrator's endpoint.
 		string token = await _tokenIssuer.IssueAsync(user, LoginTokenPurpose.MagicLink, cancellationToken);
-		await _context.SaveChangesAsync(cancellationToken);
+		user.AddDomainEvent(new MagicLinkIssuedEvent(user.Id, user.Email, user.Name, token));
 
-		await _emailSender.SendMagicLinkAsync(user.Email, user.Name, token, cancellationToken);
+		await _context.SaveChangesAsync(cancellationToken);
 	}
 }
