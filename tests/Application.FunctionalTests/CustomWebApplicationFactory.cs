@@ -1,9 +1,6 @@
 using Kompaz.Application.Common.Interfaces;
-using Kompaz.Infrastructure.Persistence;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Time.Testing;
@@ -12,8 +9,13 @@ using System.Globalization;
 namespace Kompaz.Application.FunctionalTests;
 
 /// <summary>
-/// Boots the API against a private in-memory database and a capturing email transport, so every test starts from
-/// the same seeded state and can read the sign-in links the application "sent".
+/// Boots the API against a database of its own on the shared PostgreSQL server, plus a capturing email transport, so
+/// every test starts from the same seeded state and can read the sign-in links the application "sent".
+/// <para>
+/// Only the outside world is replaced — email, and the clock. The database is the real provider against a real
+/// server, reached by handing the host a connection string, so persistence behaves in a test the way it will in
+/// production rather than the way a substitute would.
+/// </para>
 /// </summary>
 internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz.Presentation.Program>
 {
@@ -27,7 +29,23 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 	/// </summary>
 	public const int AbsoluteLifetimeDays = 90;
 
-	private SqliteConnection? _connection;
+	private readonly IReadOnlyDictionary<string, string> _settings;
+
+	public CustomWebApplicationFactory()
+		: this(new Dictionary<string, string>(StringComparer.Ordinal))
+	{
+	}
+
+	/// <summary>
+	/// Initializes a new instance of the <see cref="CustomWebApplicationFactory"/> class with extra configuration on
+	/// top of the defaults below, for a test about how the application is wired rather than about what an endpoint
+	/// returns.
+	/// </summary>
+	/// <param name="settings">Configuration to state on the host, overriding the defaults.</param>
+	public CustomWebApplicationFactory(IReadOnlyDictionary<string, string> settings)
+	{
+		_settings = settings;
+	}
 
 	public CapturingEmailSender Emails { get; } = new();
 
@@ -46,6 +64,9 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 		// the builder is being assembled, which is before ConfigureAppConfiguration callbacks run.
 		builder.UseSetting("Swagger", "false");
 
+		// An empty database, which the application then migrates and seeds itself.
+		builder.UseSetting("ConnectionStrings:KompazDb", PostgresFixture.CreateDatabase());
+
 		// Tests drive the sign-in and refresh endpoints far harder than a real client would.
 		builder.UseSetting("RateLimiting:PermitLimit", "100000");
 		builder.UseSetting("RateLimiting:SignInPermitLimit", "100000");
@@ -57,34 +78,19 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 		builder.UseSetting("Authentication:RefreshTokenSlidingLifetimeDays", SlidingLifetimeDays.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:RefreshTokenAbsoluteLifetimeDays", AbsoluteLifetimeDays.ToString(CultureInfo.InvariantCulture));
 
+		// Last, so a test that states one of these on purpose wins over the defaults above.
+		foreach (var (key, value) in _settings)
+		{
+			builder.UseSetting(key, value);
+		}
+
 		builder.ConfigureServices(services =>
 		{
-			_connection = new SqliteConnection("Data Source=:memory:");
-			_connection.Open();
-
-			services.RemoveAll<DbContextOptions<ApplicationDbContext>>();
-			services.RemoveAll<ApplicationDbContext>();
-			services.RemoveAll<IApplicationDbContext>();
-
-			services.AddDbContext<ApplicationDbContext>(options => options.UseSqlite(_connection));
-			services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
-
 			services.RemoveAll<IAuthenticationEmailSender>();
 			services.AddSingleton<IAuthenticationEmailSender>(Emails);
 
 			services.RemoveAll<TimeProvider>();
 			services.AddSingleton<TimeProvider>(Clock);
 		});
-	}
-
-	protected override void Dispose(bool disposing)
-	{
-		base.Dispose(disposing);
-
-		if (disposing)
-		{
-			_connection?.Dispose();
-			_connection = null;
-		}
 	}
 }

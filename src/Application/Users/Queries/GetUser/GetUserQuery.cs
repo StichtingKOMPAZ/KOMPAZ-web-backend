@@ -6,7 +6,8 @@ using Kompaz.Domain.Entities;
 namespace Kompaz.Application.Users.Queries.GetUser;
 
 /// <summary>
-/// Returns a single user. Callers may read themselves and anyone inside their own organization.
+/// Returns a single user. Anybody may read their own profile; reading somebody else needs administrator rights over
+/// their organization, so this endpoint cannot be used to walk the roster that <c>GET /api/users</c> gates.
 /// </summary>
 [Authorize]
 public record GetUserQuery(Guid Id) : IRequest<UserDto>;
@@ -33,7 +34,7 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, UserDto>
 
 		if (_currentUser.Id != user.Id)
 		{
-			OrganizationAccess.EnsureCanRead(_currentUser, user.OrganizationId);
+			OrganizationAccess.EnsureCanManage(_currentUser, user.OrganizationId);
 		}
 
 		return user;

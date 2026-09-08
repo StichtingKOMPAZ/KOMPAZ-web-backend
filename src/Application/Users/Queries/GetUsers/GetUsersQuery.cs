@@ -81,9 +81,11 @@ public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, PaginatedList
 		if (!string.IsNullOrWhiteSpace(request.Search))
 		{
 			string pattern = SearchPattern.Contains(request.Search.Trim());
+
+			// NormalizedEmail is already upper-cased, which is what it is for; the name has to be folded here.
 			query = query.Where(user =>
-				EF.Functions.Like(user.Name, pattern, SearchPattern.EscapeCharacter)
-				|| EF.Functions.Like(user.Email, pattern, SearchPattern.EscapeCharacter));
+				EF.Functions.Like(user.Name.ToUpper(), pattern, SearchPattern.EscapeCharacter)
+				|| EF.Functions.Like(user.NormalizedEmail, pattern, SearchPattern.EscapeCharacter));
 		}
 
 		return PaginatedList<UserDto>.CreateAsync(

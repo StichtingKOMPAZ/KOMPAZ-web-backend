@@ -4,6 +4,7 @@ using Kompaz.Application.Authentication.Commands.RequestMagicLink;
 using Kompaz.Application.Users;
 using Kompaz.Application.Users.Commands.InviteUser;
 using Kompaz.Domain.Enums;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Time.Testing;
 using NUnit.Framework;
 using System.Net.Http.Headers;
@@ -69,6 +70,12 @@ internal abstract class ApiTestBase : IDisposable
 		_factory?.Dispose();
 		_factory = null!;
 	}
+
+	/// <summary>
+	/// Opens a scope on the application's own services, for a test about what the database does rather than about
+	/// what an endpoint returns.
+	/// </summary>
+	protected IServiceScope CreateScope() => _factory.Services.CreateScope();
 
 	/// <summary>
 	/// Creates an anonymous client.

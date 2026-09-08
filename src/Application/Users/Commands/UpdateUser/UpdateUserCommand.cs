@@ -49,10 +49,15 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 
 		OrganizationAccess.EnsureCanManage(_currentUser, user.OrganizationId);
 
+		// Checked whatever the request asks for, not only when the role moves: editing a platform administrator at
+		// all is reserved, the way deleting one is. Otherwise an ordinary administrator could rename one.
+		OrganizationAccess.EnsureCanManageRole(_currentUser, user.Role);
+
 		if (request.Role != user.Role)
 		{
 			OrganizationAccess.EnsureCanManageRole(_currentUser, request.Role);
-			OrganizationAccess.EnsureCanManageRole(_currentUser, user.Role);
+
+			await EnsureAPlatformAdministratorRemainsAsync(user, request.Role, cancellationToken);
 		}
 
 		user.Update(request.Name, request.Role, _timeProvider.GetUtcNow());
@@ -63,5 +68,29 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 			.Where(candidate => candidate.Id == user.Id)
 			.Select(UserDto.Projection)
 			.SingleAsync(cancellationToken);
+	}
+
+	/// <summary>
+	/// Refuses a demotion that would leave the platform with nobody able to grant the role back. Deleting the last
+	/// platform administrator is already impossible — only a platform administrator may remove one, and nobody may
+	/// remove themselves — so giving up the role is the one remaining way to lock everybody out.
+	/// </summary>
+	private async Task EnsureAPlatformAdministratorRemainsAsync(User user, UserRole newRole, CancellationToken cancellationToken)
+	{
+		if (user.Role != UserRole.PlatformAdministrator || newRole == UserRole.PlatformAdministrator)
+		{
+			return;
+		}
+
+		bool anotherRemains = await _context.Users
+			.AnyAsync(
+				candidate => candidate.Id != user.Id && candidate.Role == UserRole.PlatformAdministrator,
+				cancellationToken);
+
+		if (!anotherRemains)
+		{
+			throw new ConflictException(
+				"The last platform administrator cannot give up the role. Appoint another one first.");
+		}
 	}
 }

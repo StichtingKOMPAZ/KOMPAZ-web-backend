@@ -2,11 +2,14 @@ using Kompaz.Application.Common.Interfaces;
 using Kompaz.Infrastructure.Persistence;
 using Kompaz.Presentation.Common.Cors;
 using Kompaz.Presentation.Common.Errors;
+using Kompaz.Presentation.Common.Proxy;
 using Kompaz.Presentation.Common.RateLimiting;
 using Kompaz.Presentation.Common.Swagger;
 using Kompaz.Presentation.Infrastructure;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.OpenApi;
+using System.Net;
 using System.Reflection;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
@@ -57,10 +60,51 @@ internal static class ConfigureServices
 		});
 
 		services.AddOutputCache();
+		services.AddForwardedHeaders(configuration);
 		services.AddRateLimiting(configuration);
 		services.AddSwagger(environment);
 
 		return services;
+	}
+
+	private static void AddForwardedHeaders(this IServiceCollection services, IConfiguration configuration)
+	{
+		var section = configuration.GetSection(ForwardedHeadersSettings.SectionName);
+
+		services.AddOptions<ForwardedHeadersSettings>()
+			.Bind(section)
+			.Validate(settings => settings.Validate() is null, DescribeForwardedHeadersProblem(configuration))
+			.ValidateOnStart();
+
+		var settings = section.Get<ForwardedHeadersSettings>() ?? new ForwardedHeadersSettings();
+
+		// A bad address here is reported by the validation above, as a configuration problem rather than as a parse
+		// failure from inside a callback the host runs later.
+		if (!settings.IsEnabled || settings.Validate() is not null)
+		{
+			return;
+		}
+
+		services.Configure<ForwardedHeadersOptions>(options =>
+		{
+			options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+			options.ForwardLimit = settings.ForwardLimit;
+
+			// Cleared, not added to. The defaults believe loopback, which is not what anybody asked for, and
+			// leaving them in place would quietly widen the set of senders beyond the configured one.
+			options.KnownProxies.Clear();
+			options.KnownIPNetworks.Clear();
+
+			foreach (string proxy in settings.KnownProxies)
+			{
+				options.KnownProxies.Add(IPAddress.Parse(proxy));
+			}
+
+			foreach (string network in settings.KnownNetworks)
+			{
+				options.KnownIPNetworks.Add(System.Net.IPNetwork.Parse(network));
+			}
+		});
 	}
 
 	private static void AddRateLimiting(this IServiceCollection services, IConfiguration configuration)
@@ -127,6 +171,15 @@ internal static class ConfigureServices
 		});
 	}
 
+	private static string DescribeForwardedHeadersProblem(IConfiguration configuration) =>
+		(configuration.GetSection(ForwardedHeadersSettings.SectionName).Get<ForwardedHeadersSettings>()
+			?? new ForwardedHeadersSettings()).Validate()
+			?? "Forwarded header configuration is invalid.";
+
+	/// <summary>
+	/// The partition a caller is rate limited within. Behind a proxy this is only the caller once the forwarded
+	/// headers have been believed, which is what the "ForwardedHeaders" section is for.
+	/// </summary>
 	private static string ClientKey(HttpContext context) =>
 		context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 }

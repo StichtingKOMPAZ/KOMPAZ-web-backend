@@ -14,13 +14,24 @@ public sealed record PaginatedList<T>(IReadOnlyList<T> Items, int PageNumber, in
 
 	/// <summary>
 	/// Counts the source query and materializes the requested page from it.
+	/// <para>
+	/// The offset is computed in 64 bits because a client picks both numbers: <c>pageNumber * pageSize</c> overflows
+	/// <see cref="int"/> long before either value is individually unreasonable, and a wrapped offset would quietly
+	/// serve the wrong page. A page past the end is answered empty without touching the database.
+	/// </para>
 	/// </summary>
 	public static async Task<PaginatedList<T>> CreateAsync(IQueryable<T> source, int pageNumber, int pageSize, CancellationToken cancellationToken)
 	{
 		int totalCount = await source.CountAsync(cancellationToken);
+		long skip = ((long)pageNumber - 1) * pageSize;
+
+		if (skip >= totalCount)
+		{
+			return new PaginatedList<T>([], pageNumber, pageSize, totalCount);
+		}
 
 		var items = await source
-			.Skip((pageNumber - 1) * pageSize)
+			.Skip((int)skip)
 			.Take(pageSize)
 			.ToListAsync(cancellationToken);
 

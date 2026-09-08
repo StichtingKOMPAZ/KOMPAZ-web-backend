@@ -51,7 +51,9 @@ public class GetOrganizationsQueryHandler : IRequestHandler<GetOrganizationsQuer
 		if (!string.IsNullOrWhiteSpace(request.Search))
 		{
 			string search = request.Search.Trim();
-			query = query.Where(organization => EF.Functions.Like(organization.Name, SearchPattern.Contains(search), SearchPattern.EscapeCharacter));
+			string pattern = SearchPattern.Contains(search);
+			query = query.Where(organization =>
+				EF.Functions.Like(organization.Name.ToUpper(), pattern, SearchPattern.EscapeCharacter));
 		}
 
 		return PaginatedList<OrganizationDto>.CreateAsync(

@@ -1,16 +1,20 @@
-version: '3.1'
-
 services:
   postgres:
-    image: postgres:14
+    image: postgres:17-alpine
     container_name: postgres
     restart: unless-stopped
     ports:
-      - '127.0.0.1:54321:5432'
+      - '127.0.0.1:5433:5432'
     volumes:
       - postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: kompaz
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d kompaz']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite

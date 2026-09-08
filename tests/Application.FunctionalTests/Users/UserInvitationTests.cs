@@ -88,6 +88,87 @@ internal sealed class UserInvitationTests : ApiTestBase
 	}
 
 	[Test]
+	public async Task ReinvitingSomebodyWhoHasNotAcceptedYetSendsAFreshLink()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var first = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string firstToken = Emails.TokenFor("nieuw@kompaz.local");
+
+		var second = await InviteAsync(administrator, "nieuw@kompaz.local", "Betere Naam", UserRole.Administrator);
+		string secondToken = Emails.TokenFor("nieuw@kompaz.local");
+
+		second.Id.Should().Be(first.Id);
+		second.Name.Should().Be("Betere Naam");
+		second.Role.Should().Be(UserRole.Administrator);
+		secondToken.Should().NotBe(firstToken);
+	}
+
+	[Test]
+	public async Task ReinvitingRetiresTheLinkSentBefore()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string firstToken = Emails.TokenFor("nieuw@kompaz.local");
+
+		await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+
+		var withOldLink = await CreateClient().PostAsJsonAsync(
+			"/api/auth/tokens", new { token = firstToken }, JsonOptions.Web);
+
+		withOldLink.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+	}
+
+	[Test]
+	public async Task AskingForAMagicLinkLeavesAPendingInvitationAlone()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string invitation = Emails.TokenFor("nieuw@kompaz.local");
+
+		// Anonymous, and repeatable by anybody who knows the address. It must not retire the invitation.
+		var anonymous = CreateClient();
+		for (int attempt = 0; attempt < 3; attempt++)
+		{
+			var requested = await anonymous.PostAsJsonAsync(
+				"/api/auth/magic-link", new { email = "nieuw@kompaz.local" }, JsonOptions.Web);
+			requested.StatusCode.Should().Be(HttpStatusCode.Accepted);
+		}
+
+		Emails.TokenFor("nieuw@kompaz.local").Should().NotBe(invitation);
+
+		var withInvitation = await CreateClient().PostAsJsonAsync(
+			"/api/auth/tokens", new { token = invitation }, JsonOptions.Web);
+
+		withInvitation.StatusCode.Should().Be(HttpStatusCode.OK);
+	}
+
+	[Test]
+	public async Task AdministratorsMayNotResendAPlatformAdministratorsInvitation()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var pending = await InviteAsync(platformAdministrator, "root@kompaz.local", "Root", UserRole.PlatformAdministrator);
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var response = await administrator.PostAsync($"/api/users/{pending.Id}/invitations", content: null);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	[Test]
+	public async Task AdministratorsMayNotReinviteAPlatformAdministrator()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(platformAdministrator, "root@kompaz.local", "Root", UserRole.PlatformAdministrator);
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var response = await administrator.PostAsJsonAsync(
+			"/api/users/invitations",
+			new InviteUserCommand("root@kompaz.local", "Root", UserRole.Member), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	[Test]
 	public async Task MembersMayNotInviteAnyone()
 	{
 		var administrator = await SignInAsPlatformAdministratorAsync();

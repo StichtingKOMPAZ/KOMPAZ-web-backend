@@ -52,6 +52,7 @@ public class ResendUserInvitationCommandHandler : IRequestHandler<ResendUserInvi
 			?? throw new NotFoundException(nameof(User), request.Id);
 
 		OrganizationAccess.EnsureCanManage(_currentUser, user.OrganizationId);
+		OrganizationAccess.EnsureCanManageRole(_currentUser, user.Role);
 
 		if (user.Status == UserStatus.Active)
 		{

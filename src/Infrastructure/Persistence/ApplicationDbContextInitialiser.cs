@@ -1,3 +1,4 @@
+using Kompaz.Application.Common.Exceptions;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -33,6 +34,26 @@ public class ApplicationDbContextInitialiser
 		await _context.Database.MigrateAsync(cancellationToken);
 	}
 
+	/// <summary>
+	/// Refuses to start against a database that is behind the code, for a deployment that applies migrations itself.
+	/// Serving requests against a schema that does not match the model fails later, less clearly, and after having
+	/// read or written something.
+	/// </summary>
+	public async Task EnsureUpToDateAsync(CancellationToken cancellationToken = default)
+	{
+		string[] pending = [.. await _context.Database.GetPendingMigrationsAsync(cancellationToken)];
+
+		if (pending.Length == 0)
+		{
+			return;
+		}
+
+		throw new InvalidOperationException(
+			$"The database is missing {pending.Length} migration(s), starting with \"{pending[0]}\". "
+			+ "Database:MigrateOnStartup is off, so apply them as a deployment step — dotnet ef database update — "
+			+ "before starting the application.");
+	}
+
 	public async Task SeedAsync(CancellationToken cancellationToken = default)
 	{
 		if (await _context.Organizations.AnyAsync(cancellationToken))
@@ -61,11 +82,24 @@ public class ApplicationDbContextInitialiser
 		administrator.Activate(now);
 		_context.Users.Add(administrator);
 
-		await _context.SaveChangesAsync(cancellationToken);
+		try
+		{
+			await _context.SaveChangesAsync(cancellationToken);
+		}
+		catch (ConflictException)
+		{
+			// The check above is not a lock, so two instances starting together can both reach this point. The
+			// unique index on the organization name settles it, and losing means somebody else did the work.
+			_logger.LogInformation("Another instance seeded the database first.");
+			return;
+		}
 
-		_logger.LogInformation(
-			"Seeded organization {OrganizationName} with platform administrator {Email}. Request a sign-in link for that address to get started.",
-			PlatformOrganizationName,
-			PlatformAdministratorEmail);
+		if (_logger.IsEnabled(LogLevel.Information))
+		{
+			_logger.LogInformation(
+				"Seeded organization {OrganizationName} with platform administrator {Email}. Request a sign-in link for that address to get started.",
+				PlatformOrganizationName,
+				PlatformAdministratorEmail);
+		}
 	}
 }

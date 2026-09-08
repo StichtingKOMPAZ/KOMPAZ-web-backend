@@ -34,14 +34,17 @@ public sealed class LoginTokenIssuer
 	{
 		var now = _timeProvider.GetUtcNow();
 
-		var outstanding = await _context.LoginTokens
-			.Where(token => token.UserId == user.Id && token.ConsumedUtc == null)
-			.ToListAsync(cancellationToken);
-
-		foreach (var token in outstanding)
-		{
-			token.Consume(now);
-		}
+		// Retiring the previous link is a bulk UPDATE rather than a read followed by a write, so two requests
+		// arriving together cannot each conclude that the other's link does not exist yet and leave two live links
+		// behind. It lands before the caller's save: should that fail there is briefly no link at all, which is the
+		// safe direction to fail in, and asking for another one costs nothing.
+		//
+		// Only links of the same purpose are retired. An invitation is issued by an administrator, while a magic
+		// link can be asked for by anybody who knows the address, so letting the second retire the first would let
+		// a stranger invalidate a pending invitation as often as they liked.
+		await _context.LoginTokens
+			.Where(token => token.UserId == user.Id && token.Purpose == purpose && token.ConsumedUtc == null)
+			.ExecuteUpdateAsync(setters => setters.SetProperty(token => token.ConsumedUtc, (DateTimeOffset?)now), cancellationToken);
 
 		var pair = _tokenFactory.Create();
 		var lifetime = purpose == LoginTokenPurpose.Invitation

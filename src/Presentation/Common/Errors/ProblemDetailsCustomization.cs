@@ -25,11 +25,17 @@ internal static class ProblemDetailsCustomization
 		var httpContext = context.HttpContext;
 
 		problemDetails.Status ??= httpContext.Response.StatusCode;
-		problemDetails.Instance ??= $"{httpContext.Request.Method} {httpContext.Request.Path}";
+
+		// RFC 9457 asks for a URI reference here, so the path alone. The method is already known to whoever sent it.
+		problemDetails.Instance ??= httpContext.Request.Path.Value;
 
 		if (problemDetails.Status is { } status && Defaults.TryGetValue(status, out var mapping))
 		{
-			problemDetails.Type ??= mapping.Type;
+			// Assigned, not defaulted. The framework has already put a URI of its own here, and the point of the
+			// table above is that every problem this API returns names its status from one vocabulary. The title is
+			// still only a fallback, because a more specific one — "one or more validation errors" — beats the
+			// status name it would otherwise be replaced with.
+			problemDetails.Type = mapping.Type;
 			problemDetails.Title ??= mapping.Title;
 		}
 

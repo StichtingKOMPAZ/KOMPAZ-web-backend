@@ -1,6 +1,7 @@
 using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Users;
+using Kompaz.Domain.Entities;
 using Microsoft.Extensions.Logging;
 
 namespace Kompaz.Application.Authentication.Commands.RefreshAccessToken;
@@ -58,14 +59,7 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 
 		if (stored.IsSpent)
 		{
-			await RevokeSessionAsync(stored.SessionId, now, cancellationToken);
-
-			_logger.LogWarning(
-				"A spent refresh token was replayed for user {UserId}; session {SessionId} has been revoked.",
-				stored.UserId,
-				stored.SessionId);
-
-			throw new AuthenticationFailedException("The refresh token has already been used. The session has been ended.");
+			throw await EndSessionAsReplayedAsync(stored, now, cancellationToken);
 		}
 
 		if (!stored.IsRedeemable(now))
@@ -73,10 +67,36 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 			throw new AuthenticationFailedException("The refresh token has expired.");
 		}
 
+		// The checks above cannot settle it on their own: concurrent requests carrying the same secret would both pass
+		// them and both rotate. Spending the token is therefore a conditional UPDATE, and losing it is a replay like
+		// any other.
+		//
+		// Expiry is deliberately not one of the conditions below, unlike on the login-token path. Losing this UPDATE
+		// revokes the whole chain, and a token that expired in the moment between the check and the UPDATE would then
+		// be punished as a replay rather than reported as expired. Expiry has no race worth closing: it only ever
+		// becomes more true.
+		//
+		// Spending and replacing happen inside one transaction so they land together. A request that loses the race
+		// revokes the whole chain, and it must not be able to do that in the gap between the two, or it would revoke
+		// a chain the successor has not joined yet and leave it working.
+		await using var rotation = await _context.BeginTransactionAsync(cancellationToken);
+
+		int claimed = await _context.RefreshTokens
+			.Where(token => token.TokenHash == tokenHash && token.ConsumedUtc == null && token.RevokedUtc == null)
+			.ExecuteUpdateAsync(setters => setters.SetProperty(token => token.ConsumedUtc, (DateTimeOffset?)now), cancellationToken);
+
+		if (claimed == 0)
+		{
+			await rotation.RollbackAsync(cancellationToken);
+
+			throw await EndSessionAsReplayedAsync(stored, now, cancellationToken);
+		}
+
 		var successor = _refreshTokenIssuer.Rotate(stored);
 		stored.User.RecordLogin(now);
 
 		await _context.SaveChangesAsync(cancellationToken);
+		await rotation.CommitAsync(cancellationToken);
 
 		var accessToken = _accessTokenIssuer.Issue(stored.User);
 
@@ -87,6 +107,26 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 			successor.Value,
 			successor.ExpiresUtc,
 			UserDto.FromEntity(stored.User));
+	}
+
+	/// <summary>
+	/// Ends the session a replayed token belongs to and returns the failure for the caller to throw. Presenting a
+	/// token that is already spent, and losing the race to spend one, are the same event: the secret is in more than
+	/// one pair of hands.
+	/// </summary>
+	private async Task<AuthenticationFailedException> EndSessionAsReplayedAsync(
+		RefreshToken stored,
+		DateTimeOffset now,
+		CancellationToken cancellationToken)
+	{
+		await RevokeSessionAsync(stored.SessionId, now, cancellationToken);
+
+		_logger.LogWarning(
+			"A spent refresh token was replayed for user {UserId}; session {SessionId} has been revoked.",
+			stored.UserId,
+			stored.SessionId);
+
+		return new AuthenticationFailedException("The refresh token has already been used. The session has been ended.");
 	}
 
 	/// <summary>

@@ -54,23 +54,11 @@ public class RequestMagicLinkCommandHandler : IRequestHandler<RequestMagicLinkCo
 			return;
 		}
 
-		var purpose = user.Status == UserStatus.Invited
-			? LoginTokenPurpose.Invitation
-			: LoginTokenPurpose.MagicLink;
-
-		string token = await _tokenIssuer.IssueAsync(user, purpose, cancellationToken);
+		// Always a magic link, even for somebody who has not accepted their invitation yet. Redeeming one activates
+		// them just the same, and minting an invitation here would let anybody who knows the address retire the
+		// invitation an administrator sent, over and over. Reissuing that one is the administrator's endpoint.
+		string token = await _tokenIssuer.IssueAsync(user, LoginTokenPurpose.MagicLink, cancellationToken);
 		await _context.SaveChangesAsync(cancellationToken);
-
-		if (purpose == LoginTokenPurpose.Invitation)
-		{
-			string organizationName = await _context.Organizations
-				.Where(organization => organization.Id == user.OrganizationId)
-				.Select(organization => organization.Name)
-				.SingleAsync(cancellationToken);
-
-			await _emailSender.SendInvitationAsync(user.Email, user.Name, organizationName, token, cancellationToken);
-			return;
-		}
 
 		await _emailSender.SendMagicLinkAsync(user.Email, user.Name, token, cancellationToken);
 	}

@@ -105,6 +105,60 @@ internal sealed class UserCrudTests : ApiTestBase
 	}
 
 	[Test]
+	public async Task MembersMayNotReadTheirColleagues()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var colleague = await InviteAsync(administrator, "collega@kompaz.local", "Collega");
+		var member = await InviteAndSignInAsync(administrator, "lid@kompaz.local", "Gewoon Lid", UserRole.Member);
+
+		var response = await member.GetAsync($"/api/users/{colleague.Id}");
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	[Test]
+	public async Task TheLastPlatformAdministratorMayNotGiveUpTheRole()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+
+		var response = await platformAdministrator.PutAsJsonAsync(
+			$"/api/users/{me!.Id}",
+			new UserEndpoints.UpdateUserRequest(me.Name, UserRole.Administrator), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+	}
+
+	[Test]
+	public async Task APlatformAdministratorMayStepDownOnceAnotherIsAppointed()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+		await InviteAsync(platformAdministrator, "opvolger@kompaz.local", "Opvolger", UserRole.PlatformAdministrator);
+
+		var response = await platformAdministrator.PutAsJsonAsync(
+			$"/api/users/{me!.Id}",
+			new UserEndpoints.UpdateUserRequest(me.Name, UserRole.Administrator), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.OK);
+	}
+
+	[Test]
+	public async Task AdministratorsMayNotRenameAPlatformAdministrator()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		// The role is left alone, so only the unconditional guard stands between them and editing their superior.
+		var response = await administrator.PutAsJsonAsync(
+			$"/api/users/{me!.Id}",
+			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.PlatformAdministrator), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	[Test]
 	public async Task AdministratorsMayNotDeleteAPlatformAdministrator()
 	{
 		var platformAdministrator = await SignInAsPlatformAdministratorAsync();

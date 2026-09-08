@@ -21,8 +21,28 @@ internal sealed class CurrentUser : IUser
 
 	public Guid? OrganizationId => ReadGuid(KompazClaimTypes.Organization);
 
-	public UserRole? Role =>
-		Enum.TryParse(ReadClaim(KompazClaimTypes.Role), ignoreCase: false, out UserRole role) ? role : null;
+	/// <summary>
+	/// Gets the role named on the token, or <see langword="null"/> when it does not name one.
+	/// </summary>
+	public UserRole? Role => ReadRole(ReadClaim(KompazClaimTypes.Role));
+
+	/// <summary>
+	/// Accepts only the exact name of a role this application defines.
+	/// <para>
+	/// <see cref="Enum.TryParse{TEnum}(string, bool, out TEnum)"/> is looser than it looks. It takes numbers, so
+	/// <c>"99"</c> would come back as a <c>(UserRole)99</c> that outranks every role there is, and <c>"2"</c> would
+	/// come back as <see cref="UserRole.PlatformAdministrator"/> by a spelling this application never issues. The
+	/// same claim also serves as ASP.NET's role claim, which only ever compares names, so accepting a second
+	/// spelling here would mean the two layers could disagree about who the caller is.
+	/// </para>
+	/// </summary>
+	private static UserRole? ReadRole(string? claim) =>
+		claim is not null
+		&& Enum.TryParse(claim, ignoreCase: false, out UserRole role)
+		&& Enum.IsDefined(role)
+		&& string.Equals(claim, role.ToString(), StringComparison.Ordinal)
+			? role
+			: null;
 
 	private string? ReadClaim(string type) =>
 		_httpContextAccessor.HttpContext?.User.FindFirst(type)?.Value;

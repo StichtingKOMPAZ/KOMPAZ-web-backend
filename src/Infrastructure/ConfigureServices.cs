@@ -9,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -17,26 +18,52 @@ namespace Kompaz.Infrastructure;
 
 public static class ConfigureServices
 {
-	public static IServiceCollection AddInfrastructureServices(this IServiceCollection services, IConfiguration configuration)
+	/// <summary>
+	/// Whether an instance migrates the database as it starts. True is right for one instance and for a developer
+	/// machine. Several instances starting together would race each other, so a deployment that scales out turns
+	/// this off and applies migrations as a step of its own; startup then refuses to serve a database that is behind.
+	/// </summary>
+	private const string MigrateOnStartupKey = "Database:MigrateOnStartup";
+
+	public static IServiceCollection AddInfrastructureServices(
+		this IServiceCollection services,
+		IConfiguration configuration,
+		IHostEnvironment environment)
 	{
 		services.AddDbContext<ApplicationDbContext>(options =>
-			options.UseSqlite(configuration.GetConnectionString("KompazDb")));
+			options.UseNpgsql(configuration.GetConnectionString("KompazDb")));
 
 		services.AddScoped<IApplicationDbContext>(provider => provider.GetRequiredService<ApplicationDbContext>());
 		services.AddScoped<ApplicationDbContextInitialiser>();
 
 		services.AddAuthenticationServices(configuration);
-		services.AddEmailServices(configuration);
+		services.AddEmailServices(configuration, environment);
 
 		return services;
 	}
 
+	/// <summary>
+	/// Brings the database up to date, unless a deployment would rather do that itself.
+	/// </summary>
 	public static async Task<WebApplication> InitialiseAndSeedDatabaseAsync(this WebApplication app)
 	{
 		using var scope = app.Services.CreateScope();
+
+		// Configuration first. Every ValidateOnStart check otherwise runs inside RunAsync, which is after this
+		// method has already created, migrated and seeded a database for a deployment that was going to fail anyway.
+		scope.ServiceProvider.GetRequiredService<IStartupValidator>().Validate();
+
 		var initializer = scope.ServiceProvider.GetRequiredService<ApplicationDbContextInitialiser>();
 
-		await initializer.InitialiseAsync();
+		if (app.Configuration.GetValue(MigrateOnStartupKey, true))
+		{
+			await initializer.InitialiseAsync();
+		}
+		else
+		{
+			await initializer.EnsureUpToDateAsync();
+		}
+
 		await initializer.SeedAsync();
 
 		return app;
@@ -86,7 +113,7 @@ public static class ConfigureServices
 		services.AddAuthorizationBuilder();
 	}
 
-	private static void AddEmailServices(this IServiceCollection services, IConfiguration configuration)
+	private static void AddEmailServices(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
 	{
 		var section = configuration.GetSection(EmailSettings.SectionName);
 
@@ -101,9 +128,19 @@ public static class ConfigureServices
 		{
 			services.AddScoped<IEmailDispatcher, SmtpEmailDispatcher>();
 		}
-		else
+		else if (environment.IsDevelopment())
 		{
 			services.AddScoped<IEmailDispatcher, LoggingEmailDispatcher>();
+		}
+		else
+		{
+			// The fallback sink writes sign-in links to the log, which is only acceptable on a developer machine.
+			// Outside development a relay is mandatory: refuse to start rather than quietly log everybody's
+			// credentials, the same way a missing signing key refuses to start rather than sign with a shared secret.
+			throw new InvalidOperationException(
+				$"{EmailSettings.SectionName}:{nameof(EmailSettings.Smtp)} must be configured with Host, UserName, and "
+				+ $"Password outside the Development environment (current environment: {environment.EnvironmentName}). "
+				+ "Without a relay, sign-in links would be written to the application log.");
 		}
 
 		services.AddScoped<IAuthenticationEmailSender, AuthenticationEmailSender>();

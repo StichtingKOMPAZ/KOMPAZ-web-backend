@@ -46,17 +46,23 @@ public class RedeemLoginTokenCommandHandler : IRequestHandler<RedeemLoginTokenCo
 		string tokenHash = _tokenFactory.Hash(request.Token);
 		var now = _timeProvider.GetUtcNow();
 
-		var loginToken = await _context.LoginTokens
-			.Include(token => token.User)
-				.ThenInclude(user => user.Organization)
-			.SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken);
+		// Every reason to refuse — unknown, spent, expired — is one condition of a single UPDATE, so the link is
+		// either claimed by this request or not claimed at all. Reading it first and then spending it would let two
+		// requests carrying the same secret both pass the read and both open a session.
+		int claimed = await _context.LoginTokens
+			.Where(token => token.TokenHash == tokenHash && token.ConsumedUtc == null && token.ExpiresUtc > now)
+			.ExecuteUpdateAsync(setters => setters.SetProperty(token => token.ConsumedUtc, (DateTimeOffset?)now), cancellationToken);
 
-		if (loginToken is null || !loginToken.IsRedeemable(now))
+		if (claimed == 0)
 		{
 			throw new AuthenticationFailedException("The sign-in link is invalid, already used, or expired.");
 		}
 
-		loginToken.Consume(now);
+		var loginToken = await _context.LoginTokens
+			.Include(token => token.User)
+				.ThenInclude(user => user.Organization)
+			.SingleAsync(token => token.TokenHash == tokenHash, cancellationToken);
+
 		loginToken.User.Activate(now);
 		loginToken.User.RecordLogin(now);
 
