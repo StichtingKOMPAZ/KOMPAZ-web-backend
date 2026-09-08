@@ -11,8 +11,10 @@ using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.OpenApi;
 using System.Net;
 using System.Reflection;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.RateLimiting;
+using MvcJsonOptions = Microsoft.AspNetCore.Mvc.JsonOptions;
 
 namespace Kompaz.Presentation;
 
@@ -26,12 +28,13 @@ internal static class ConfigureServices
 		services.AddHttpContextAccessor();
 		services.AddScoped<IUser, CurrentUser>();
 
-		services.ConfigureHttpJsonOptions(options =>
-		{
-			options.SerializerOptions.ReferenceHandler = ReferenceHandler.IgnoreCycles;
-			options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
-			options.SerializerOptions.Converters.Add(new JsonStringEnumConverter());
-		});
+		services.ConfigureHttpJsonOptions(options => ConfigureJson(options.SerializerOptions));
+
+		// The same settings again, on options nothing in this application reads at runtime. Swashbuckle builds its
+		// schemas from MVC's serializer options even where there is no MVC, so leaving these two to drift means the
+		// document describes a serializer nobody uses: enums were published as integers while every response carried
+		// their names, and a generated client could not deserialize a single user.
+		services.Configure<MvcJsonOptions>(options => ConfigureJson(options.JsonSerializerOptions));
 
 		services.AddProblemDetails(options => options.CustomizeProblemDetails = ProblemDetailsCustomization.Apply);
 		services.AddExceptionHandler<CustomExceptionHandler>();
@@ -138,17 +141,31 @@ internal static class ConfigureServices
 		});
 	}
 
+	/// <summary>
+	/// How this API is serialized, in one place because two different options objects have to agree about it.
+	/// </summary>
+	private static void ConfigureJson(JsonSerializerOptions options)
+	{
+		options.ReferenceHandler = ReferenceHandler.IgnoreCycles;
+		options.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
+		options.Converters.Add(new JsonStringEnumConverter());
+	}
+
 	private static void AddSwagger(this IServiceCollection services, IWebHostEnvironment environment)
 	{
 		services.AddSwaggerGen(options =>
 		{
+			// Without this every reference type is published as nullable and optional, however the C# reads —
+			// so a required string looked optional, and RequiredSchemaFilter below could never see one to mark.
+			options.SupportNonNullableReferenceTypes();
+
 			options.SwaggerDoc("v1", new OpenApiInfo
 			{
 				Version = "v1",
 				Title = $"KOMPAZ API ({environment.EnvironmentName})"
 			});
 
-			options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+			options.AddSecurityDefinition(SecuritySchemeOperationFilter.SchemeName, new OpenApiSecurityScheme
 			{
 				Description = "Enter the access token returned by POST /api/auth/tokens.",
 				Name = "Authorization",
@@ -158,16 +175,13 @@ internal static class ConfigureServices
 				BearerFormat = "JWT"
 			});
 
-			options.AddSecurityRequirement(document => new OpenApiSecurityRequirement
-			{
-				{ new OpenApiSecuritySchemeReference("Bearer", document), [] }
-			});
-
 			options.IncludeXmlComments(Path.Combine(AppContext.BaseDirectory, $"{Assembly.GetExecutingAssembly().GetName().Name}.xml"));
 			options.SchemaFilter<RequiredSchemaFilter>();
 			options.SchemaFilter<StringFormatSchemaFilter>();
 			options.SchemaFilter<SwaggerIgnoreSchemaFilter>();
 			options.OperationFilter<SwaggerIgnoreOperationFilter>();
+			options.OperationFilter<SecuritySchemeOperationFilter>();
+			options.OperationFilter<ProblemResponseOperationFilter>();
 		});
 	}
 

@@ -8,6 +8,7 @@ using Kompaz.Application.Organizations.Queries.GetOrganizations;
 using Kompaz.Presentation.Infrastructure;
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Kompaz.Presentation.Endpoints;
 
@@ -61,6 +62,7 @@ internal class OrganizationEndpoints : IEndpointGroup
 	/// <summary>
 	/// Creates an organization.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Created<OrganizationDto>> CreateOrganization(ISender sender, CreateOrganizationCommand command, CancellationToken cancellationToken)
 	{
 		var organization = await sender.Send(command, cancellationToken);
@@ -70,6 +72,7 @@ internal class OrganizationEndpoints : IEndpointGroup
 	/// <summary>
 	/// Renames an organization.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Ok<OrganizationDto>> UpdateOrganization(ISender sender, Guid id, UpdateOrganizationRequest request, CancellationToken cancellationToken)
 	{
 		var organization = await sender.Send(new UpdateOrganizationCommand(id, request.Name), cancellationToken);
@@ -79,6 +82,7 @@ internal class OrganizationEndpoints : IEndpointGroup
 	/// <summary>
 	/// Deletes an organization along with its users.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<NoContent> DeleteOrganization(ISender sender, Guid id, CancellationToken cancellationToken)
 	{
 		await sender.Send(new DeleteOrganizationCommand(id), cancellationToken);

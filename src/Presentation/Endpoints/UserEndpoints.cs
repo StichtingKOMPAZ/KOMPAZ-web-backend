@@ -11,6 +11,7 @@ using Kompaz.Domain.Enums;
 using Kompaz.Presentation.Infrastructure;
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Kompaz.Presentation.Endpoints;
 
@@ -70,6 +71,7 @@ internal class UserEndpoints : IEndpointGroup
 	/// <summary>
 	/// Invites someone into an organization and emails them a link that accepts the invitation and signs them in.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Created<UserDto>> InviteUser(ISender sender, InviteUserCommand command, CancellationToken cancellationToken)
 	{
 		var user = await sender.Send(command, cancellationToken);
@@ -79,6 +81,7 @@ internal class UserEndpoints : IEndpointGroup
 	/// <summary>
 	/// Sends a fresh invitation link, retiring the previous one.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Accepted> ResendUserInvitation(ISender sender, Guid id, CancellationToken cancellationToken)
 	{
 		await sender.Send(new ResendUserInvitationCommand(id), cancellationToken);
@@ -97,6 +100,7 @@ internal class UserEndpoints : IEndpointGroup
 	/// <summary>
 	/// Updates a user's display name and role, as an administrator.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Ok<UserDto>> UpdateUser(ISender sender, Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
 	{
 		var user = await sender.Send(new UpdateUserCommand(id, request.Name, request.Role), cancellationToken);
@@ -106,6 +110,7 @@ internal class UserEndpoints : IEndpointGroup
 	/// <summary>
 	/// Deletes a user.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<NoContent> DeleteUser(ISender sender, Guid id, CancellationToken cancellationToken)
 	{
 		await sender.Send(new DeleteUserCommand(id), cancellationToken);

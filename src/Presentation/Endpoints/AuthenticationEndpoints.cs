@@ -9,6 +9,7 @@ using Kompaz.Presentation.Common.RateLimiting;
 using Kompaz.Presentation.Infrastructure;
 using MediatR;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Kompaz.Presentation.Endpoints;
 
@@ -46,6 +47,7 @@ internal class AuthenticationEndpoints : IEndpointGroup
 	/// <summary>
 	/// Exchanges the single-use token from a sign-in link for a bearer token, activating an invited user.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 	public async Task<Ok<AuthenticationResultDto>> RedeemLoginToken(ISender sender, RedeemLoginTokenCommand command, CancellationToken cancellationToken)
 	{
 		var result = await sender.Send(command, cancellationToken);
@@ -56,6 +58,7 @@ internal class AuthenticationEndpoints : IEndpointGroup
 	/// Exchanges a refresh token for a new access token and its successor, sliding the session forward. The refresh
 	/// token supplied is spent by this call; replaying it ends the session.
 	/// </summary>
+	[ProducesResponseType<ProblemDetails>(StatusCodes.Status401Unauthorized)]
 	public async Task<Ok<AuthenticationResultDto>> RefreshAccessToken(ISender sender, RefreshAccessTokenCommand command, CancellationToken cancellationToken)
 	{
 		var result = await sender.Send(command, cancellationToken);
