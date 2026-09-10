@@ -1,42 +1,64 @@
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Infrastructure.Authentication;
 using Microsoft.Extensions.Options;
-using System.Globalization;
 
 namespace Kompaz.Infrastructure.Email;
 
 /// <summary>
 /// Turns a single-use secret into a client link and composes the email that carries it.
+/// <para>
+/// The wording comes from <see cref="EmailText"/> rather than from string literals here, so a second language is a
+/// resource file and not a change to this class. Which language a given recipient gets is the one open question:
+/// today every message goes out in <see cref="EmailSettings.DefaultLanguage"/>, because nothing records a person's
+/// preference yet. When something does, the two <c>culture</c> locals below are what it feeds.
+/// </para>
 /// </summary>
 internal sealed class AuthenticationEmailSender : IAuthenticationEmailSender
 {
 	private readonly EmailSettings _settings;
+	private readonly AuthenticationSettings _authentication;
 	private readonly IEmailDispatcher _dispatcher;
 
-	public AuthenticationEmailSender(IOptions<EmailSettings> settings, IEmailDispatcher dispatcher)
+	public AuthenticationEmailSender(
+		IOptions<EmailSettings> settings,
+		IOptions<AuthenticationSettings> authentication,
+		IEmailDispatcher dispatcher)
 	{
 		_settings = settings.Value;
+		_authentication = authentication.Value;
 		_dispatcher = dispatcher;
 	}
 
 	public Task SendMagicLinkAsync(string email, string name, string token, CancellationToken cancellationToken = default)
 	{
+		var culture = _settings.Culture;
 		string link = BuildLink(_settings.MagicLinkUrl, token);
-		string body = string.Create(
-			CultureInfo.InvariantCulture,
-			$"Hello {name},\n\nUse the link below to sign in. It works once and expires shortly.\n\n{link}\n\nIf you did not request this, you can ignore this email.");
 
-		return _dispatcher.SendAsync(new EmailMessage(email, name, "Your KOMPAZ sign-in link", body), cancellationToken);
+		// The lifetime is read from configuration rather than written into the wording, so the promise the email
+		// makes cannot drift from the deadline the redemption endpoint actually enforces.
+		int minutes = (int)_authentication.MagicLinkLifetime.TotalMinutes;
+
+		return _dispatcher.SendAsync(
+			new EmailMessage(
+				email,
+				name,
+				EmailText.Get(EmailText.MagicLinkSubject, culture),
+				EmailText.Get(EmailText.MagicLinkBody, culture, name, link, minutes)),
+			cancellationToken);
 	}
 
 	public Task SendInvitationAsync(string email, string name, string organizationName, string token, CancellationToken cancellationToken = default)
 	{
+		var culture = _settings.Culture;
 		string link = BuildLink(_settings.InvitationUrl, token);
-		string body = string.Create(
-			CultureInfo.InvariantCulture,
-			$"Hello {name},\n\nYou have been invited to join {organizationName} on KOMPAZ.\n\nUse the link below to accept the invitation and sign in.\n\n{link}");
+		int days = (int)_authentication.InvitationLifetime.TotalDays;
 
 		return _dispatcher.SendAsync(
-			new EmailMessage(email, name, $"You have been invited to {organizationName} on KOMPAZ", body),
+			new EmailMessage(
+				email,
+				name,
+				EmailText.Get(EmailText.InvitationSubject, culture, organizationName),
+				EmailText.Get(EmailText.InvitationBody, culture, name, organizationName, link, days)),
 			cancellationToken);
 	}
 

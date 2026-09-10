@@ -20,6 +20,11 @@ namespace Kompaz.Application.FunctionalTests;
 internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz.Presentation.Program>
 {
 	/// <summary>
+	/// How long a requested sign-in link stays redeemable.
+	/// </summary>
+	public const int MagicLinkLifetimeMinutes = 30;
+
+	/// <summary>
 	/// How long an invitation link stays redeemable.
 	/// </summary>
 	public const int InvitationLifetimeDays = 7;
@@ -75,10 +80,11 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 		// Tests drive the sign-in and refresh endpoints far harder than a real client would.
 		builder.UseSetting("RateLimiting:PermitLimit", "100000");
 		builder.UseSetting("RateLimiting:SignInPermitLimit", "100000");
+		builder.UseSetting("RateLimiting:MagicLinkPermitLimit", "100000");
 
 		// Stated rather than inherited, because the refresh-token tests do arithmetic against these numbers.
 		builder.UseSetting("Authentication:AccessTokenLifetimeMinutes", "60");
-		builder.UseSetting("Authentication:MagicLinkLifetimeMinutes", "15");
+		builder.UseSetting("Authentication:MagicLinkLifetimeMinutes", MagicLinkLifetimeMinutes.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:InvitationLifetimeDays", InvitationLifetimeDays.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:RefreshTokenSlidingLifetimeDays", SlidingLifetimeDays.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:RefreshTokenAbsoluteLifetimeDays", AbsoluteLifetimeDays.ToString(CultureInfo.InvariantCulture));

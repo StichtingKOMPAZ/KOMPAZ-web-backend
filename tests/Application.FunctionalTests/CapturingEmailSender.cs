@@ -11,8 +11,19 @@ internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 {
 	private readonly ConcurrentDictionary<string, string> _tokensByEmail = new(StringComparer.OrdinalIgnoreCase);
 
+	/// <summary>
+	/// Gets or sets a value indicating whether sending fails, the way a relay that is down does. Set it to reach
+	/// the behaviour that a delivery failure must not be visible to the caller.
+	/// </summary>
+	public bool DeliveryFails { get; set; }
+
 	public Task SendMagicLinkAsync(string email, string name, string token, CancellationToken cancellationToken = default)
 	{
+		if (DeliveryFails)
+		{
+			throw new InvalidOperationException("The relay refused the message.");
+		}
+
 		_tokensByEmail[email] = token;
 		return Task.CompletedTask;
 	}

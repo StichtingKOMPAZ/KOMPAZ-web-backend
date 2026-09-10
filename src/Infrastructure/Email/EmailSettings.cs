@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace Kompaz.Infrastructure.Email;
 
 /// <summary>
@@ -21,6 +23,18 @@ internal sealed class EmailSettings
 	/// Gets the display name sign-in emails are sent from.
 	/// </summary>
 	public string FromName { get; init; } = "KOMPAZ";
+
+	/// <summary>
+	/// Gets the language outbound email is written in, as a culture name such as <c>nl</c> or <c>en</c>. Dutch is
+	/// the product's language and the neutral resource, so an unrecognized value still produces a Dutch email
+	/// rather than no email; <see cref="Validate"/> refuses one that names no culture at all.
+	/// </summary>
+	public string DefaultLanguage { get; init; } = "nl";
+
+	/// <summary>
+	/// Gets <see cref="DefaultLanguage"/> as a culture. Resolved once per read from the framework's cache.
+	/// </summary>
+	public CultureInfo Culture => TryResolveCulture(DefaultLanguage) ?? CultureInfo.InvariantCulture;
 
 	/// <summary>
 	/// Gets the client URL for a sign-in link, containing <see cref="TokenPlaceholder"/>.
@@ -58,8 +72,48 @@ internal sealed class EmailSettings
 			return $"{SectionName}:{nameof(InvitationUrl)} must contain the {TokenPlaceholder} placeholder.";
 		}
 
+		if (TryResolveCulture(DefaultLanguage) is not { } culture || !IsKnownCulture(culture))
+		{
+			return $"{SectionName}:{nameof(DefaultLanguage)} must be a culture name such as \"nl\" or \"en\" "
+				+ $"(current value: \"{DefaultLanguage}\").";
+		}
+
 		return null;
 	}
+
+	/// <summary>
+	/// Returns the culture a name refers to, or null when the name is not one at all. Caught rather than probed,
+	/// because the framework offers no non-throwing lookup, and the framework's own cache makes the happy path
+	/// cheap enough to call per message.
+	/// </summary>
+	private static CultureInfo? TryResolveCulture(string name)
+	{
+		if (string.IsNullOrWhiteSpace(name))
+		{
+			return null;
+		}
+
+		try
+		{
+			return CultureInfo.GetCultureInfo(name);
+		}
+		catch (CultureNotFoundException)
+		{
+			return null;
+		}
+	}
+
+	/// <summary>
+	/// Whether this is a culture the framework knows, rather than one it invented from a name that merely looked
+	/// like a language tag — which <see cref="CultureInfo.GetCultureInfo(string)"/> does without complaining. A
+	/// typo would otherwise pass startup and then quietly send every email in the neutral language, so the one
+	/// symptom of a misconfigured deployment would be Dutch email that was supposed to be something else. Walking
+	/// the full list is affordable because <see cref="Validate"/> runs once, at startup.
+	/// </summary>
+	private static bool IsKnownCulture(CultureInfo culture) =>
+		Array.Exists(
+			CultureInfo.GetCultures(CultureTypes.AllCultures),
+			known => string.Equals(known.Name, culture.Name, StringComparison.OrdinalIgnoreCase));
 }
 
 /// <summary>

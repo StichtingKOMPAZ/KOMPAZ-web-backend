@@ -32,7 +32,7 @@ internal sealed class AuthenticationSettings : IAuthenticationSettings
 	/// <summary>
 	/// Gets how long a requested sign-in link stays redeemable.
 	/// </summary>
-	public int MagicLinkLifetimeMinutes { get; init; } = 15;
+	public int MagicLinkLifetimeMinutes { get; init; } = 30;
 
 	/// <summary>
 	/// Gets how long an invitation link stays redeemable.

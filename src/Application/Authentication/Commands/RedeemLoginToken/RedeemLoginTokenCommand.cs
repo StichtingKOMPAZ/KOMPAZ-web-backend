@@ -79,7 +79,7 @@ public class RedeemLoginTokenCommandHandler : IRequestHandler<RedeemLoginTokenCo
 			// The invitation has been accepted now, whichever link the invitee actually arrived on — a magic link
 			// they asked for themselves activates them just as well. Any invitation still outstanding is therefore
 			// spent: leaving it redeemable would keep a week-long credential alive in an inbox for somebody who can
-			// already sign in, where a magic link only ever lives fifteen minutes, and would leave the roster
+			// already sign in, where a magic link only ever lives thirty minutes, and would leave the roster
 			// reporting an invitation nobody is waiting on. Like issuing a link, this lands before the caller's
 			// save, so a failure leaves the link retired rather than live.
 			await _context.LoginTokens

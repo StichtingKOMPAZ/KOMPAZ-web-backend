@@ -8,7 +8,7 @@ namespace Kompaz.Application.FunctionalTests.Infrastructure;
 /// <summary>
 /// Per-client rate limiting keys on the caller's address, so behind a proxy it is only per-client once the forwarded
 /// headers are believed — and believing them from the wrong sender turns the limit into something the caller picks.
-/// These pin both halves by exhausting a tiny sign-in budget from two forwarded addresses.
+/// These pin both halves by exhausting a tiny magic-link budget from two forwarded addresses.
 /// </summary>
 [TestFixture]
 internal sealed class ForwardedHeadersTests
@@ -23,9 +23,9 @@ internal sealed class ForwardedHeadersTests
 	[Test]
 	public async Task WithoutAConfiguredProxyForwardedCallersShareOneBudget()
 	{
-		using var factory = TightSignInBudget([]);
+		using var factory = TightMagicLinkBudget([]);
 
-		await ExhaustSignInBudgetAsync(factory, FirstCaller);
+		await ExhaustMagicLinkBudgetAsync(factory, FirstCaller);
 
 		(await RequestMagicLinkAsync(factory, SecondCaller)).Should().Be(HttpStatusCode.TooManyRequests);
 	}
@@ -33,12 +33,12 @@ internal sealed class ForwardedHeadersTests
 	[Test]
 	public async Task WithAProxyConfiguredEachForwardedCallerGetsItsOwnBudget()
 	{
-		using var factory = TightSignInBudget(new Dictionary<string, string>(StringComparer.Ordinal)
+		using var factory = TightMagicLinkBudget(new Dictionary<string, string>(StringComparer.Ordinal)
 		{
 			["ForwardedHeaders:TrustAnyProxy"] = "true",
 		});
 
-		await ExhaustSignInBudgetAsync(factory, FirstCaller);
+		await ExhaustMagicLinkBudgetAsync(factory, FirstCaller);
 
 		(await RequestMagicLinkAsync(factory, SecondCaller)).Should().Be(HttpStatusCode.Accepted);
 	}
@@ -46,12 +46,12 @@ internal sealed class ForwardedHeadersTests
 	[Test]
 	public async Task AConfiguredProxyStillLimitsTheSameForwardedCaller()
 	{
-		using var factory = TightSignInBudget(new Dictionary<string, string>(StringComparer.Ordinal)
+		using var factory = TightMagicLinkBudget(new Dictionary<string, string>(StringComparer.Ordinal)
 		{
 			["ForwardedHeaders:TrustAnyProxy"] = "true",
 		});
 
-		await ExhaustSignInBudgetAsync(factory, FirstCaller);
+		await ExhaustMagicLinkBudgetAsync(factory, FirstCaller);
 
 		(await RequestMagicLinkAsync(factory, FirstCaller)).Should().Be(HttpStatusCode.TooManyRequests);
 	}
@@ -87,15 +87,15 @@ internal sealed class ForwardedHeadersTests
 		start.Should().Throw<Exception>().Which.Message.Should().Contain("not-a-network");
 	}
 
-	private static CustomWebApplicationFactory TightSignInBudget(Dictionary<string, string> settings)
+	private static CustomWebApplicationFactory TightMagicLinkBudget(Dictionary<string, string> settings)
 	{
-		settings["RateLimiting:SignInPermitLimit"] = "2";
-		settings["RateLimiting:SignInWindowSeconds"] = "300";
+		settings["RateLimiting:MagicLinkPermitLimit"] = "2";
+		settings["RateLimiting:MagicLinkWindowSeconds"] = "300";
 
 		return new CustomWebApplicationFactory(settings);
 	}
 
-	private static async Task ExhaustSignInBudgetAsync(CustomWebApplicationFactory factory, string caller)
+	private static async Task ExhaustMagicLinkBudgetAsync(CustomWebApplicationFactory factory, string caller)
 	{
 		for (int attempt = 0; attempt < 2; attempt++)
 		{

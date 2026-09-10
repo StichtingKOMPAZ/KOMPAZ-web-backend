@@ -128,6 +128,17 @@ internal static class ConfigureServices
 						QueueProcessingOrder = QueueProcessingOrder.OldestFirst
 					}));
 
+			options.AddPolicy(RateLimitSettings.MagicLinkPolicyName, context =>
+				RateLimitPartition.GetFixedWindowLimiter(
+					ClientKey(context),
+					_ => new FixedWindowRateLimiterOptions
+					{
+						PermitLimit = settings.MagicLinkPermitLimit,
+						Window = TimeSpan.FromSeconds(settings.MagicLinkWindowSeconds),
+						QueueLimit = 0,
+						QueueProcessingOrder = QueueProcessingOrder.OldestFirst
+					}));
+
 			options.AddPolicy(RateLimitSettings.SignInPolicyName, context =>
 				RateLimitPartition.GetFixedWindowLimiter(
 					ClientKey(context),

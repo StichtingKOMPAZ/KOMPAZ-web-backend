@@ -285,15 +285,17 @@ probe with `429` for being busy would be restarted for being busy.
 | `Authentication:Issuer` / `Audience` | Stamped on and required of every access token |
 | `Authentication:SigningKey` | HMAC-SHA256 key, **at least 32 bytes**; startup fails without it |
 | `Authentication:AccessTokenLifetimeMinutes` | Default 60 |
-| `Authentication:MagicLinkLifetimeMinutes` | Default 15 |
+| `Authentication:MagicLinkLifetimeMinutes` | Default 30 |
 | `Authentication:InvitationLifetimeDays` | Default 7 |
 | `Authentication:RefreshTokenSlidingLifetimeDays` | Idle window, restarted on every refresh. Default 14 |
 | `Authentication:RefreshTokenAbsoluteLifetimeDays` | Ceiling refreshing never moves. Default 90, must be >= the sliding window |
 | `Email:FromAddress` / `FromName` | Sender of sign-in email |
+| `Email:DefaultLanguage` | Language outbound email is written in; `nl` (default) or `en`. Add a language by adding `src/Infrastructure/Email/EmailResources.<culture>.resx` |
 | `Email:MagicLinkUrl` / `InvitationUrl` | Client URLs; both must contain the `{token}` placeholder |
 | `Email:Smtp:Host` | Mailtrap sandbox in development |
 | `Email:Smtp:UserName` / `Password` | From user secrets. While unset, email is logged in Development and startup fails elsewhere |
-| `RateLimiting:SignInPermitLimit` / `SignInWindowSeconds` | Budget for the two anonymous auth endpoints (default 5 per 5 minutes) |
+| `RateLimiting:MagicLinkPermitLimit` / `MagicLinkWindowSeconds` | Budget for requesting a sign-in link, per client address (default 5 per 5 minutes). Shared by everyone behind one address |
+| `RateLimiting:SignInPermitLimit` / `SignInWindowSeconds` | Budget for the token endpoints, which send no email (default 30 per 5 minutes) |
 | `ForwardedHeaders:KnownProxies` / `KnownNetworks` | Proxies whose `X-Forwarded-*` headers are believed. Empty means none |
 | `ForwardedHeaders:TrustAnyProxy` | Believe any sender. Only where nothing can reach the app but the proxy |
 | `ForwardedHeaders:ForwardLimit` | How many chained proxies to walk back through. Default 1 |

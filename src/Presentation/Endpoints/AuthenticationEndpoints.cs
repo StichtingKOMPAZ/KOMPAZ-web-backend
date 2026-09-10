@@ -22,10 +22,15 @@ internal class AuthenticationEndpoints : IEndpointGroup
 	{
 		var group = app.MapEndpoints("auth");
 
-		// The anonymous endpoints send email and accept secrets, so they get a tighter budget than the rest of the API.
+		// The anonymous endpoints send email and accept secrets, so they get a tighter budget than the rest of the
+		// API — but two budgets, not one. Asking for a link is the expensive half, and it must not be able to
+		// exhaust the allowance that the resulting click needs to spend.
+		group.MapGroup(string.Empty)
+			.RequireRateLimiting(RateLimitSettings.MagicLinkPolicyName)
+			.MapPost(RequestMagicLink, "magic-link");
+
 		group.MapGroup(string.Empty)
 			.RequireRateLimiting(RateLimitSettings.SignInPolicyName)
-			.MapPost(RequestMagicLink, "magic-link")
 			.MapPost(RedeemLoginToken, "tokens")
 			.MapPost(RefreshAccessToken, "tokens/refresh")
 			.MapPost(RevokeRefreshToken, "tokens/revoke");
