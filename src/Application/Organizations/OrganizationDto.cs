@@ -1,4 +1,4 @@
-using Kompaz.Domain.Entities;
+﻿using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
 using System.Linq.Expressions;
 
@@ -10,6 +10,7 @@ namespace Kompaz.Application.Organizations;
 public sealed record OrganizationDto(
 	Guid Id,
 	string Name,
+	bool IsPlatform,
 	int UserCount,
 	int ActiveUserCount,
 	int InvitedUserCount,
@@ -22,6 +23,7 @@ public sealed record OrganizationDto(
 	public static Expression<Func<Organization, OrganizationDto>> Projection => organization => new OrganizationDto(
 		organization.Id,
 		organization.Name,
+		organization.IsPlatform,
 		organization.Users.Count,
 		organization.Users.Count(user => user.Status == UserStatus.Active),
 		organization.Users.Count(user => user.Status == UserStatus.Invited),

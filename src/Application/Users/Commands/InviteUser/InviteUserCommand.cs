@@ -1,4 +1,4 @@
-using Kompaz.Application.Authentication;
+﻿using Kompaz.Application.Authentication;
 using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
@@ -61,11 +61,13 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 	{
 		var organizationId = OrganizationAccess.ResolveTarget(_currentUser, request.OrganizationId);
 		OrganizationAccess.EnsureCanManage(_currentUser, organizationId);
-		OrganizationAccess.EnsureCanManageRole(_currentUser, request.Role);
+		OrganizationAccess.EnsureCanGrantRole(_currentUser, request.Role);
 
 		var organization = await _context.Organizations
 			.SingleOrDefaultAsync(candidate => candidate.Id == organizationId, cancellationToken)
 			?? throw new NotFoundException(nameof(Organization), organizationId);
+
+		OrganizationAccess.EnsureCanHoldRole(organization, request.Role);
 
 		string normalizedEmail = User.Normalize(request.Email);
 		var now = _timeProvider.GetUtcNow();

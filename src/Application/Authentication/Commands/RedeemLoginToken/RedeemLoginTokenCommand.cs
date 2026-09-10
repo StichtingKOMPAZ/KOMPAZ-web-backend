@@ -1,7 +1,8 @@
-using Kompaz.Application.Common.Exceptions;
+﻿using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
 using Kompaz.Application.Users;
+using Kompaz.Domain.Enums;
 
 namespace Kompaz.Application.Authentication.Commands.RedeemLoginToken;
 
@@ -68,8 +69,27 @@ public class RedeemLoginTokenCommandHandler : IRequestHandler<RedeemLoginTokenCo
 				.ThenInclude(user => user.Organization)
 			.SingleAsync(token => token.TokenHash == tokenHash, cancellationToken);
 
+		bool accepting = loginToken.User.Status == UserStatus.Invited;
+
 		loginToken.User.Activate(now);
 		loginToken.User.RecordLogin(now);
+
+		if (accepting)
+		{
+			// The invitation has been accepted now, whichever link the invitee actually arrived on — a magic link
+			// they asked for themselves activates them just as well. Any invitation still outstanding is therefore
+			// spent: leaving it redeemable would keep a week-long credential alive in an inbox for somebody who can
+			// already sign in, where a magic link only ever lives fifteen minutes, and would leave the roster
+			// reporting an invitation nobody is waiting on. Like issuing a link, this lands before the caller's
+			// save, so a failure leaves the link retired rather than live.
+			await _context.LoginTokens
+				.Where(token => token.UserId == loginToken.UserId
+					&& token.Purpose == LoginTokenPurpose.Invitation
+					&& token.ConsumedUtc == null)
+				.ExecuteUpdateAsync(
+					setters => setters.SetProperty(token => token.ConsumedUtc, (DateTimeOffset?)now),
+					cancellationToken);
+		}
 
 		var refreshToken = _refreshTokenIssuer.StartSession(loginToken.User);
 

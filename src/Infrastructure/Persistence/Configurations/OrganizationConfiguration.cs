@@ -1,4 +1,4 @@
-using Kompaz.Domain.Entities;
+﻿using Kompaz.Domain.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 
@@ -14,6 +14,12 @@ public class OrganizationConfiguration : IEntityTypeConfiguration<Organization>
 
 		builder.HasIndex(organization => organization.Name)
 			.IsUnique();
+
+		// At most one organization runs the platform. Nothing over the API sets the flag, so this guards a future
+		// mistake rather than a reachable request — and it is what lets a query trust the flag to identify one row.
+		builder.HasIndex(organization => organization.IsPlatform)
+			.IsUnique()
+			.HasFilter("\"IsPlatform\"");
 
 		builder.HasMany(organization => organization.Users)
 			.WithOne(user => user.Organization)

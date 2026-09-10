@@ -1,4 +1,4 @@
-using Kompaz.Application.Common.Interfaces;
+﻿using Kompaz.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -19,6 +19,11 @@ namespace Kompaz.Application.FunctionalTests;
 /// </summary>
 internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz.Presentation.Program>
 {
+	/// <summary>
+	/// How long an invitation link stays redeemable.
+	/// </summary>
+	public const int InvitationLifetimeDays = 7;
+
 	/// <summary>
 	/// The idle window a refresh token gets, restarted on every exchange.
 	/// </summary>
@@ -74,7 +79,7 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 		// Stated rather than inherited, because the refresh-token tests do arithmetic against these numbers.
 		builder.UseSetting("Authentication:AccessTokenLifetimeMinutes", "60");
 		builder.UseSetting("Authentication:MagicLinkLifetimeMinutes", "15");
-		builder.UseSetting("Authentication:InvitationLifetimeDays", "7");
+		builder.UseSetting("Authentication:InvitationLifetimeDays", InvitationLifetimeDays.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:RefreshTokenSlidingLifetimeDays", SlidingLifetimeDays.ToString(CultureInfo.InvariantCulture));
 		builder.UseSetting("Authentication:RefreshTokenAbsoluteLifetimeDays", AbsoluteLifetimeDays.ToString(CultureInfo.InvariantCulture));
 

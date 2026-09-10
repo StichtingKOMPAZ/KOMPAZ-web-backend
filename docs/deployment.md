@@ -105,6 +105,13 @@ Mailtrap sandbox inbox.
     -PostgresAdminPassword <igne-admin-password>
 ```
 
+There is a bash equivalent for Linux, WSL and CI. The two do the same steps in the same order and either is
+fine; keep them in step when one changes.
+
+```bash
+./scripts/bootstrap-azure.sh     --mailtrap-username <inbox-username>     --mailtrap-password <inbox-password>     --postgres-admin-password <igne-admin-password>
+```
+
 The script is idempotent and can be re-run. It:
 
 1. Creates the `Kompaz` resource group.
@@ -150,6 +157,30 @@ client secret anywhere.
 
 The script registers a second federated credential for `ref:refs/heads/main`. It is unused while the deploy job
 declares an environment, and is there so a job without one still authenticates.
+
+**Four credentials get registered, not two.** GitHub may present either of two subject formats, and which one it
+uses is not something this repository controls:
+
+```
+repo:StichtingKOMPAZ/KOMPAZ-web-backend:environment:develop
+repo:StichtingKOMPAZ@324818359/KOMPAZ-web-backend@1356901373:environment:develop
+```
+
+The second embeds the numeric organisation and repository ids — GitHub's *immutable subject claim*, which exists
+so that a deleted org or repo name cannot be re-registered by someone else and inherit the trust relationship.
+This deployment presented the second form, and the login step failed with:
+
+```
+AADSTS700213: No matching federated identity record found for presented assertion subject ...
+```
+
+which is easy to misread, because the subject it names looks almost identical to one already registered. Both
+forms are now registered for both subjects. If it ever happens again, the error text contains the exact subject
+to add:
+
+```bash
+az ad app federated-credential list --id <appId> --query "[].subject" -o tsv
+```
 
 ## Wiring up the proxy
 

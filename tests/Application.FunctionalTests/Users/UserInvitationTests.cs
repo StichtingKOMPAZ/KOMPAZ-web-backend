@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Kompaz.Application.Organizations;
 using Kompaz.Application.Organizations.Commands.CreateOrganization;
 using Kompaz.Application.Users;
@@ -192,6 +192,127 @@ internal sealed class UserInvitationTests : ApiTestBase
 			new InviteUserCommand("root@kompaz.local", "Root", UserRole.PlatformAdministrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	/// <summary>
+	/// An administrator runs their own organization but does not staff it with peers: the role they may hand out is
+	/// the instructor's, and appointing another administrator is the platform's call.
+	/// </summary>
+	[Test]
+	public async Task AdministratorsMayOnlyInviteMembers()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var member = await administrator.PostAsJsonAsync(
+			"/api/users/invitations",
+			new InviteUserCommand("instructeur@kompaz.local", "Instructeur", UserRole.Member), JsonOptions.Web);
+		var peer = await administrator.PostAsJsonAsync(
+			"/api/users/invitations",
+			new InviteUserCommand("mede-beheer@kompaz.local", "Mede Beheerder", UserRole.Administrator), JsonOptions.Web);
+
+		member.StatusCode.Should().Be(HttpStatusCode.Created);
+		peer.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+	}
+
+	/// <summary>
+	/// Only name and email are needed: the organization defaults to the administrator's own and the role to the
+	/// only one they may grant, which is the modal the front end shows them.
+	/// </summary>
+	[Test]
+	public async Task AnAdministratorNeedOnlySupplyANameAndAnAddress()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var response = await administrator.PostAsJsonAsync(
+			"/api/users/invitations",
+			new { email = "instructeur@kompaz.local", name = "Instructeur" }, JsonOptions.Web);
+		var invited = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Created);
+		invited!.Role.Should().Be(UserRole.Member);
+		invited.OrganizationId.Should().Be(me!.OrganizationId);
+	}
+
+	/// <summary>
+	/// Platform administration is a job at the organization that runs the platform, so the role does not travel to
+	/// a tenant even when the caller is entitled to grant it.
+	/// </summary>
+	[Test]
+	public async Task APlatformAdministratorMayNotBeInvitedIntoATenantOrganization()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+
+		var response = await platformAdministrator.PostAsJsonAsync(
+			"/api/users/invitations",
+			new InviteUserCommand("root@klant.local", "Root", UserRole.PlatformAdministrator, tenant!.Id), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+	}
+
+	[Test]
+	public async Task APlatformAdministratorMayBeInvitedIntoThePlatformOrganization()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var me = await platformAdministrator.GetFromJsonAsync<UserDto>("/api/auth/me", JsonOptions.Web);
+
+		var invited = await InviteAsync(platformAdministrator, "root@kompaz.local", "Root", UserRole.PlatformAdministrator, me!.OrganizationId);
+
+		invited.Role.Should().Be(UserRole.PlatformAdministrator);
+	}
+
+	/// <summary>
+	/// An invitee who asks for a magic link of their own is activated by it, so the invitation has been accepted and
+	/// the week-long link it sent must not stay redeemable behind them.
+	/// </summary>
+	[Test]
+	public async Task SigningInAnyOtherWayStillSpendsTheInvitation()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string invitation = Emails.TokenFor("nieuw@kompaz.local");
+
+		await SignInAsync("nieuw@kompaz.local");
+
+		var withTheInvitation = await CreateClient().PostAsJsonAsync(
+			"/api/auth/tokens", new { token = invitation }, JsonOptions.Web);
+
+		withTheInvitation.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+	}
+
+	[Test]
+	public async Task AnInvitationReportsWhenItExpiresAndStopsWorkingThen()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string link = Emails.TokenFor("nieuw@kompaz.local");
+
+		invited.InvitationExpiresUtc.Should()
+			.Be(Clock.GetUtcNow().AddDays(CustomWebApplicationFactory.InvitationLifetimeDays));
+
+		Clock.Advance(TimeSpan.FromDays(CustomWebApplicationFactory.InvitationLifetimeDays) + TimeSpan.FromMinutes(1));
+
+		var redeemed = await CreateClient().PostAsJsonAsync("/api/auth/tokens", new { token = link }, JsonOptions.Web);
+
+		redeemed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+	}
+
+	[Test]
+	public async Task AnInvitationStillWithinItsSevenDaysWorks()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(administrator, "nieuw@kompaz.local", "Nieuwe Collega");
+		string link = Emails.TokenFor("nieuw@kompaz.local");
+
+		Clock.Advance(TimeSpan.FromDays(CustomWebApplicationFactory.InvitationLifetimeDays) - TimeSpan.FromMinutes(1));
+
+		var redeemed = await CreateClient().PostAsJsonAsync("/api/auth/tokens", new { token = link }, JsonOptions.Web);
+
+		redeemed.StatusCode.Should().Be(HttpStatusCode.OK);
 	}
 
 	[Test]

@@ -1,4 +1,4 @@
-using Kompaz.Application.Common.Exceptions;
+﻿using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
 using Kompaz.Domain.Entities;
@@ -42,6 +42,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 	public async Task<UserDto> Handle(UpdateUserCommand request, CancellationToken cancellationToken)
 	{
 		var user = await _context.Users
+			.Include(candidate => candidate.Organization)
 			.SingleOrDefaultAsync(candidate => candidate.Id == request.Id, cancellationToken)
 			?? throw new NotFoundException(nameof(User), request.Id);
 
@@ -53,7 +54,10 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 
 		if (request.Role != user.Role)
 		{
-			OrganizationAccess.EnsureCanManageRole(_currentUser, request.Role);
+			// Granted, not merely managed: a promotion here would otherwise be the way around the restriction on
+			// who an administrator may invite.
+			OrganizationAccess.EnsureCanGrantRole(_currentUser, request.Role);
+			OrganizationAccess.EnsureCanHoldRole(user.Organization, request.Role);
 
 			await EnsureAPlatformAdministratorRemainsAsync(user, request.Role, cancellationToken);
 		}

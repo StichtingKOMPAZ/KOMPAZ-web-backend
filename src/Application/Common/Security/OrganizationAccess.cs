@@ -1,5 +1,6 @@
-using Kompaz.Application.Common.Exceptions;
+﻿using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
+using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
 
 namespace Kompaz.Application.Common.Security;
@@ -49,6 +50,40 @@ public static class OrganizationAccess
 		}
 
 		throw new ForbiddenAccessException("Only a platform administrator can manage the platform administrator role.");
+	}
+
+	/// <summary>
+	/// Throws unless the caller may hand the given role to somebody else. Managing a role and granting it are not
+	/// the same thing: an administrator runs their own organization, which includes removing or renaming a fellow
+	/// administrator somebody above them appointed, but not appointing one. So a role is only ever granted from
+	/// above, which leaves an administrator able to invite members and nothing more.
+	/// </summary>
+	public static void EnsureCanGrantRole(IUser user, UserRole role)
+	{
+		// Keeps the more specific message for the escalation everybody tries first.
+		EnsureCanManageRole(user, role);
+
+		if (IsPlatformAdministrator(user) || role < user.Role)
+		{
+			return;
+		}
+
+		throw new ForbiddenAccessException("The current user can only grant a role below their own.");
+	}
+
+	/// <summary>
+	/// Throws unless the organization may hold the given role. This is not a permission check — the caller is
+	/// allowed to grant the role, just not there — so it reports a clash rather than a refusal.
+	/// </summary>
+	public static void EnsureCanHoldRole(Organization organization, UserRole role)
+	{
+		if (organization.CanHold(role))
+		{
+			return;
+		}
+
+		throw new ConflictException(
+			$"A platform administrator belongs to the organization that runs the platform, not to \"{organization.Name}\".");
 	}
 
 	/// <summary>

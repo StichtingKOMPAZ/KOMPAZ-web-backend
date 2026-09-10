@@ -31,6 +31,7 @@ param(
     [string]$DatabaseRole = 'kompaz',
 
     # Supplying this lets the script create the login role itself. Without it, the SQL is printed to run by hand.
+    [string]$PostgresAdminUser = 'igne',
     [string]$PostgresAdminPassword,
 
     [Parameter(Mandatory = $true)][string]$MailtrapUserName,
@@ -193,41 +194,68 @@ elseif ($PostgresAdminPassword) {
     # through --querytext, and the failure is quiet: the role never appears, the connection string written below
     # still looks right, and the first sign of trouble is the container failing to start with
     # "28P01: password authentication failed".
-    function Invoke-Sql([string]$Database, [string]$Sql) {
-        az postgres flexible-server execute `
-            --name $PostgresServer `
-            --admin-user 'igne' `
-            --admin-password $PostgresAdminPassword `
-            --database-name $Database `
-            --querytext $Sql `
-            --output none
-        return $LASTEXITCODE -eq 0
+    # SQL goes in via --file-path, never --querytext. On Windows the `az` launcher is a batch wrapper that eats
+    # the double quotes around a quoted identifier, and "develop-kompaz" cannot survive unquoted because of the
+    # hyphen - Postgres reads it as a subtraction and reports a syntax error that names nothing useful. A file
+    # has no shell in the middle of it.
+    function Invoke-Sql([string]$Database, [string]$Sql, [string]$Label) {
+        $file = [System.IO.Path]::GetTempFileName()
+        try {
+            # Explicitly BOM-less: the server parses the file as text, and a BOM becomes part of the first
+            # statement.
+            [System.IO.File]::WriteAllText($file, $Sql, (New-Object System.Text.UTF8Encoding($false)))
+
+            az postgres flexible-server execute `
+                --name $PostgresServer `
+                --admin-user $PostgresAdminUser `
+                --admin-password $PostgresAdminPassword `
+                --database-name $Database `
+                --file-path $file `
+                --output none
+
+            if ($LASTEXITCODE -ne 0) {
+                # The server's own error has already gone to stderr. Say which statement produced it, because
+                # "execute failed" on its own sends you looking at the firewall.
+                Write-Warning "  failed: $Label"
+                Write-Host "    $Sql"
+                return $false
+            }
+
+            return $true
+        }
+        finally {
+            Remove-Item $file -Force -ErrorAction SilentlyContinue
+        }
     }
 
     Write-Host "  creating login role $DatabaseRole"
 
     # Postgres has no CREATE ROLE IF NOT EXISTS. Try to create, and fall back to setting the password on a role
     # that is already there, which is what every re-run after the first does.
-    $created = Invoke-Sql 'postgres' "CREATE ROLE ""$DatabaseRole"" LOGIN PASSWORD '$databasePassword';"
+    $created = Invoke-Sql 'postgres' "CREATE ROLE ""$DatabaseRole"" LOGIN PASSWORD '$databasePassword';" "create role $DatabaseRole"
     if (-not $created) {
-        $created = Invoke-Sql 'postgres' "ALTER ROLE ""$DatabaseRole"" WITH LOGIN PASSWORD '$databasePassword';"
+        $created = Invoke-Sql 'postgres' "ALTER ROLE ""$DatabaseRole"" WITH LOGIN PASSWORD '$databasePassword';" "set the password on the existing role"
     }
     if (-not $created) {
         throw "Could not create or update the login role '$DatabaseRole' on $PostgresServer. Check that your public IP is on the server firewall, then re-run."
     }
 
-    if (-not (Invoke-Sql 'postgres' "GRANT ALL PRIVILEGES ON DATABASE ""$DatabaseName"" TO ""$DatabaseRole"";")) {
+    if (-not (Invoke-Sql 'postgres' "GRANT ALL PRIVILEGES ON DATABASE ""$DatabaseName"" TO ""$DatabaseRole"";" "grant on database $DatabaseName")) {
         throw "Could not grant $DatabaseRole privileges on database $DatabaseName."
     }
 
     # Not optional, and not obvious. Since PostgreSQL 15 the public schema no longer grants CREATE to everybody,
     # so a role that can connect still cannot create tables and EF migrations fail on the first CREATE TABLE.
     # This has to run connected to the database itself rather than to `postgres`.
-    if (-not (Invoke-Sql $DatabaseName "GRANT ALL ON SCHEMA public TO ""$DatabaseRole"";")) {
+    if (-not (Invoke-Sql $DatabaseName "GRANT ALL ON SCHEMA public TO ""$DatabaseRole"";" "grant on schema public")) {
         throw "Could not grant $DatabaseRole rights on the public schema of $DatabaseName."
     }
-    if (-not (Invoke-Sql $DatabaseName "ALTER SCHEMA public OWNER TO ""$DatabaseRole"";")) {
-        throw "Could not transfer ownership of the public schema of $DatabaseName to $DatabaseRole."
+    # Best effort, deliberately. GRANT ALL above is what EF migrations actually need - CREATE and USAGE on the
+    # schema. Ownership only matters for dropping or altering the schema itself, and on Azure the public schema
+    # is owned by pg_database_owner, which the server admin cannot always reassign. Failing here would block a
+    # deployment over something it does not need.
+    if (-not (Invoke-Sql $DatabaseName "ALTER SCHEMA public OWNER TO ""$DatabaseRole"";" "transfer ownership of schema public")) {
+        Write-Host "  ownership of schema public left as it is; the GRANT above is what migrations need"
     }
 
     Write-Host "  role $DatabaseRole ready" -ForegroundColor Green
@@ -269,6 +297,17 @@ Set-Secret $KeyVaultName 'smtp-password' $MailtrapPassword
 
 if (-not $SkipGitHubOidc) {
     Write-Step "GitHub OIDC"
+    # Also probe the default install location. A shell opened before `winget install GitHub.cli` has a stale PATH
+    # and will not find gh even though it is right there, which otherwise skips this whole step for no reason.
+    $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
+    if (-not $gh) {
+        foreach ($candidate in @(
+                "$env:ProgramFiles\GitHub CLI\gh.exe",
+                "${env:ProgramFiles(x86)}\GitHub CLI\gh.exe",
+                "$env:LOCALAPPDATA\Programs\GitHub CLI\gh.exe")) {
+            if (Test-Path $candidate) { $gh = $candidate; break }
+        }
+
     # Federated credentials rather than a client secret: nothing long-lived ends up in GitHub.
     $appId = az ad app list --display-name $GitHubAppName --query "[0].appId" -o tsv
     if ([string]::IsNullOrWhiteSpace($appId)) {
@@ -284,7 +323,33 @@ if (-not $SkipGitHubOidc) {
         $spId = az ad sp create --id $appId --query id -o tsv
     }
 
-    foreach ($subject in @("repo:${GitHubRepository}:ref:refs/heads/main", "repo:${GitHubRepository}:environment:develop")) {
+    # Two subject formats, both registered, because GitHub may present either. The plain one is the documented
+    # form; the other embeds the numeric organisation and repository ids -- GitHub's immutable subject claim,
+    # which exists so a deleted org or repo name cannot be re-registered by somebody else and reuse the trust.
+    # A credential for the wrong one fails at the login step with AADSTS700213, naming a subject that looks
+    # almost identical to the one already registered.
+    $subjects = @(
+        "repo:${GitHubRepository}:ref:refs/heads/main"
+        "repo:${GitHubRepository}:environment:develop"
+    )
+
+    $repoIds = $null
+    if ($gh) {
+        $idsJson = & $gh api "repos/$GitHubRepository" --jq '{owner: .owner.id, repo: .id}'
+        if ($LASTEXITCODE -eq 0 -and $idsJson) { $repoIds = $idsJson | ConvertFrom-Json }
+    }
+    if ($repoIds) {
+        $ownerName, $repoName = $GitHubRepository -split '/', 2
+        $immutable = "repo:$ownerName@$($repoIds.owner)/$repoName@$($repoIds.repo)"
+        $subjects += "${immutable}:ref:refs/heads/main"
+        $subjects += "${immutable}:environment:develop"
+    }
+    else {
+        Write-Warning "  could not read the numeric repository ids, so only the plain subject form is registered."
+        Write-Warning "  If the deploy fails with AADSTS700213, add a credential for the subject it reports."
+    }
+
+    foreach ($subject in $subjects) {
         $credentialName = ($subject -replace '[^A-Za-z0-9]', '-')
         $exists = az ad app federated-credential list --id $appId --query "[?subject=='$subject'] | length(@)" -o tsv
         if ($exists -eq '0') {
@@ -317,16 +382,6 @@ if (-not $SkipGitHubOidc) {
     # The deploy job runs in a GitHub environment named "develop", and one of the federated credentials above is
     # scoped to exactly that. If the environment does not exist the token subject will not match and the login step
     # fails with an unhelpful "no matching federated identity record found".
-    # Also probe the default install location. A shell opened before `winget install GitHub.cli` has a stale PATH
-    # and will not find gh even though it is right there, which otherwise skips this whole step for no reason.
-    $gh = (Get-Command gh -ErrorAction SilentlyContinue).Source
-    if (-not $gh) {
-        foreach ($candidate in @(
-                "$env:ProgramFiles\GitHub CLI\gh.exe",
-                "${env:ProgramFiles(x86)}\GitHub CLI\gh.exe",
-                "$env:LOCALAPPDATA\Programs\GitHub CLI\gh.exe")) {
-            if (Test-Path $candidate) { $gh = $candidate; break }
-        }
     }
 
     $ghAvailable = $null -ne $gh

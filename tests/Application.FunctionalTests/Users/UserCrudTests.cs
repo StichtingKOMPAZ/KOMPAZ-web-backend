@@ -1,4 +1,6 @@
-using FluentAssertions;
+﻿using FluentAssertions;
+using Kompaz.Application.Organizations;
+using Kompaz.Application.Organizations.Commands.CreateOrganization;
 using Kompaz.Application.Users;
 using Kompaz.Domain.Enums;
 using Kompaz.Presentation.Endpoints;
@@ -141,6 +143,47 @@ internal sealed class UserCrudTests : ApiTestBase
 			new UserEndpoints.UpdateUserRequest(me.Name, UserRole.Administrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.OK);
+	}
+
+	/// <summary>
+	/// The edit is the other way to hand out a role, so it answers to the same restriction the invitation does.
+	/// Otherwise an administrator would invite a member and promote them a moment later.
+	/// </summary>
+	[Test]
+	public async Task AdministratorsMayNotPromoteAMemberToAdministrator()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var member = await InviteAsync(platformAdministrator, "lid@kompaz.local", "Gewoon Lid");
+		var administrator = await InviteAndSignInAsync(platformAdministrator, "beheer@kompaz.local", "Beheerder", UserRole.Administrator);
+
+		var promote = await administrator.PutAsJsonAsync(
+			$"/api/users/{member.Id}",
+			new UserEndpoints.UpdateUserRequest(member.Name, UserRole.Administrator), JsonOptions.Web);
+		var rename = await administrator.PutAsJsonAsync(
+			$"/api/users/{member.Id}",
+			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.Member), JsonOptions.Web);
+
+		promote.StatusCode.Should().Be(HttpStatusCode.Forbidden);
+		rename.StatusCode.Should().Be(HttpStatusCode.OK);
+	}
+
+	/// <summary>
+	/// The role does not travel to a tenant, so a promotion cannot smuggle it there either.
+	/// </summary>
+	[Test]
+	public async Task NobodyInATenantOrganizationCanBePromotedToPlatformAdministrator()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync(
+			"/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+		var member = await InviteAsync(platformAdministrator, "lid@klant.local", "Klant Lid", UserRole.Member, tenant!.Id);
+
+		var response = await platformAdministrator.PutAsJsonAsync(
+			$"/api/users/{member.Id}",
+			new UserEndpoints.UpdateUserRequest(member.Name, UserRole.PlatformAdministrator), JsonOptions.Web);
+
+		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
 	}
 
 	[Test]

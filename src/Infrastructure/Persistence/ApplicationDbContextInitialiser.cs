@@ -1,4 +1,4 @@
-using Kompaz.Application.Common.Exceptions;
+﻿using Kompaz.Application.Common.Exceptions;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +12,7 @@ namespace Kompaz.Infrastructure.Persistence;
 /// </summary>
 public class ApplicationDbContextInitialiser
 {
-	private const string PlatformOrganizationName = "KOMPAZ";
+	private const string PlatformOrganizationName = "Stichting KOMPAZ";
 	private const string PlatformAdministratorEmail = "admin@kompaz.local";
 
 	private readonly ApplicationDbContext _context;
@@ -63,7 +63,7 @@ public class ApplicationDbContextInitialiser
 
 		var now = _timeProvider.GetUtcNow();
 
-		var organization = new Organization { Name = PlatformOrganizationName };
+		var organization = new Organization { Name = PlatformOrganizationName, IsPlatform = true };
 
 		_context.Organizations.Add(organization);
 

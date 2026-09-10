@@ -37,8 +37,12 @@ dotnet run --project src/Presentation/Presentation.csproj
 Swagger is off unless `Swagger` is `true`, which `appsettings.Development.json` sets. Nothing else does, so an
 environment nobody thought about — a staging slot, a one-off QA box — does not publish the API surface by default.
 
-On first run the database is migrated and seeded with a single organization, `KOMPAZ`, holding one active platform
-administrator: **`admin@kompaz.local`**. There is no password — sign in with a magic link.
+On first run the database is migrated and seeded with a single organization, `Stichting KOMPAZ`, holding one active
+platform administrator: **`admin@kompaz.local`**. There is no password — sign in with a magic link.
+
+That organization is flagged `isPlatform`, which is what marks it as the one that runs the platform. Nothing over the
+API sets the flag and a unique index keeps it to one row, so the organization a super admin can belong to is fixed
+when the database is seeded rather than chosen per request.
 
 ## Signing in
 
@@ -65,10 +69,15 @@ A `<session>` is:
 be used to discover who is registered. Each link works once, expires (15 minutes by default), and requesting a new
 link retires the previous **sign-in** link.
 
-It never touches a pending invitation. This endpoint is anonymous, so anybody who knows an address can call it, and
-retiring invitations here would let a stranger invalidate the link an administrator sent as often as they liked.
-Somebody who has not accepted yet can still use a sign-in link — redeeming one activates them just the same — and
-reissuing the invitation itself is the administrator's endpoint below.
+**Asking for a sign-in link never touches a pending invitation.** This endpoint is anonymous, so anybody who knows
+an address can call it, and retiring invitations here would let a stranger invalidate the link an administrator sent
+as often as they liked. Somebody who has not accepted yet can still use a sign-in link, and reissuing the invitation
+itself is the administrator's endpoint below.
+
+**Redeeming one does**, because redeeming activates them: the invitation has been accepted at that point, whichever
+link they arrived on, so any invitation still outstanding is spent along with it. Otherwise a week-long credential
+would stay live in an inbox for somebody who can already sign in, where a sign-in link only lives fifteen minutes,
+and the roster would go on reporting an invitation nobody is waiting on.
 
 ## Staying signed in
 
@@ -133,6 +142,23 @@ updated, a new link is sent, and the previous one is retired. The user row commi
 without this an invitation whose email failed to send would leave a user who was never told and an address nobody
 could invite again. Only an address belonging to somebody who has already signed in is a `409`.
 
+Only `email` and `name` are required. `organizationId` defaults to the caller's own organization and `role` to
+`Member`, which is the whole request an organization administrator can make; a platform administrator states both.
+
+**An invitation link lasts seven days** (`Authentication:InvitationLifetimeDays`), against fifteen minutes for a
+sign-in link, because the invitee has to notice the email before they can act on it. The deadline is fixed when the
+link is issued, so reconfiguring the lifetime neither expires nor revives one already sent.
+
+`invitedUtc` says when the last invitation was sent and `invitationExpiresUtc` when the outstanding one lapses —
+`null` once there is none, which is the case for everybody active. Together they are the invited table's status
+badge: an `Invited` row whose `invitationExpiresUtc` is in the future is *uitgenodigd*, one in the past *verlopen*.
+An invitation that lapses is not withdrawn — the row stays on the list until somebody re-invites
+(`POST /api/users/{id}/invitations`) or revokes it.
+
+**Revoking an invitation is `DELETE /api/users/{id}`**, the same request as deleting any user, and it takes the
+outstanding link with it rather than leaving one that would sign the invitee in after they were removed. There is no
+separate revoke endpoint and no `410`-style tombstone: an invitation nobody accepted has left nothing behind.
+
 ## Endpoints
 
 | Endpoint | Method | Lowest role |
@@ -174,6 +200,17 @@ organization. Administrators manage their own organization only; platform admini
 and are the only ones who may grant, revoke, or delete that role. HTTP-level authentication is enforced by the
 endpoint groups; role and tenant checks live in the Application layer so they hold for any caller of a use case.
 
+**A role is only ever granted from above.** An administrator can hand out `Member` and nothing else, so the people
+they invite into their organization are instructors and appointing another administrator stays the platform's call.
+Granting a role and managing somebody who holds one are separate questions: an administrator may still rename or
+remove the fellow administrator they could not have appointed. Both the invitation and `PUT /api/users/{id}` answer
+to this, or inviting a member and promoting them a moment later would be the way around it.
+
+**Platform administration does not travel to a tenant.** The role belongs to the organization flagged `isPlatform`,
+so granting it anywhere else is a `409` — a clash with where the role lives, not a refusal of the caller, who is
+usually entitled to grant it. Nothing moves a user between organizations, so the invariant only needs stating where
+the role is handed out.
+
 **The role cannot be abandoned by its last holder.** Nobody may delete their own account, and only a platform
 administrator may remove another, so a platform administrator giving up the role is the one way to leave the system
 with nobody able to grant it back. That returns `409` unless somebody else already holds it.
@@ -188,7 +225,8 @@ organization administrator who happens to share their organization cannot reach 
 GET /api/users?status=Invited&search=jansen&organizationId=<guid>&pageNumber=1&pageSize=25
 ```
 
-- `status` — `Invited` or `Active`; omit for both
+- `status` — `Invited` or `Active`; omit for both. `Invited` is the beheer page's *uitgenodigd* tab, expired
+  invitations included; read `invitationExpiresUtc` to tell the two badges apart
 - `search` — case-insensitive fragment matched against name and email, accents included, so `renée` finds `Renée`
 - `organizationId` — platform administrators only; defaults to the caller's own organization
 - `pageNumber` / `pageSize` — `pageSize` is capped at 100

@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Kompaz.Application.Common.Models;
 using Kompaz.Application.Organizations;
 using Kompaz.Application.Organizations.Commands.CreateOrganization;
@@ -118,6 +118,124 @@ internal sealed class UserQueryTests : ApiTestBase
 		everyone!.TotalCount.Should().Be(2);
 		scoped!.TotalCount.Should().Be(1);
 		scoped.Items.Should().ContainSingle(user => user.Email == "klant@kompaz.local");
+	}
+
+	/// <summary>
+	/// The invited tab needs one row per invitee carrying the four columns beside the status badge, and the badge
+	/// itself comes off the link's expiry: an invitation nobody accepted stays on the list once it lapses, which is
+	/// the difference between "uitgenodigd" and "verlopen".
+	/// </summary>
+	[Test]
+	public async Task TheInvitedListCarriesEveryColumnTheTableShows()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+		await InviteAsync(platformAdministrator, "klant@kompaz.local", "Klant Beheerder", UserRole.Administrator, tenant!.Id);
+
+		var invited = await platformAdministrator.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Invited}", JsonOptions.Web);
+		var row = invited!.Items.Should().ContainSingle(user => user.Email == "klant@kompaz.local").Subject;
+
+		row.Name.Should().Be("Klant Beheerder");
+		row.OrganizationName.Should().Be("Klant B.V.");
+		row.Role.Should().Be(UserRole.Administrator);
+		row.Status.Should().Be(UserStatus.Invited);
+		row.InvitationExpiresUtc.Should().BeAfter(Clock.GetUtcNow());
+	}
+
+	[Test]
+	public async Task AnInvitationNobodyAcceptedStaysOnTheListOnceItLapses()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAsync(administrator, "verlopen@kompaz.local", "Verlopen Uitnodiging");
+
+		Clock.Advance(TimeSpan.FromDays(CustomWebApplicationFactory.InvitationLifetimeDays + 1));
+
+		// The session above lapsed along with the invitation, so the list is read on a fresh one.
+		var afterwards = await SignInAsPlatformAdministratorAsync();
+		var invited = await afterwards.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Invited}", JsonOptions.Web);
+		var row = invited!.Items.Should().ContainSingle(user => user.Email == "verlopen@kompaz.local").Subject;
+
+		row.Status.Should().Be(UserStatus.Invited);
+		row.InvitationExpiresUtc.Should().BeBefore(Clock.GetUtcNow());
+	}
+
+	/// <summary>
+	/// Accepting spends the link, so an active user has no outstanding invitation to report an expiry for. A badge
+	/// worked out from the invitation date and the configured lifetime would have claimed one either way.
+	/// </summary>
+	[Test]
+	public async Task AnAcceptedInvitationLeavesNothingOutstanding()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		await InviteAndSignInAsync(administrator, "actief@kompaz.local", "Actief Lid", UserRole.Member);
+
+		var active = await administrator.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Active}", JsonOptions.Web);
+		var row = active!.Items.Should().ContainSingle(user => user.Email == "actief@kompaz.local").Subject;
+
+		row.InvitationExpiresUtc.Should().BeNull();
+	}
+
+	/// <summary>
+	/// The tenant administrator's own invited list is the one their beheer page shows, and nobody else's invitees
+	/// belong on it.
+	/// </summary>
+	[Test]
+	public async Task AdministratorsOnlySeeInvitationsIntoTheirOwnOrganization()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+
+		await InviteAsync(platformAdministrator, "elders@kompaz.local", "Elders Uitgenodigd");
+		await InviteAndSignInAsync(platformAdministrator, "klant@kompaz.local", "Klant Beheerder", UserRole.Administrator, tenant!.Id);
+
+		var administrator = await SignInAsync("klant@kompaz.local");
+		await InviteAsync(administrator, "instructeur@klant.local", "Instructeur");
+
+		var invited = await administrator.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Invited}", JsonOptions.Web);
+
+		invited!.Items.Should().OnlyContain(user => user.OrganizationId == tenant.Id);
+		invited.Items.Should().ContainSingle(user => user.Email == "instructeur@klant.local");
+	}
+
+	/// <summary>
+	/// Revoking an invitation is a plain delete, and it takes the outstanding link with it rather than leaving one
+	/// that would sign the invitee in after they were removed.
+	/// </summary>
+	[Test]
+	public async Task RevokingAnInvitationRemovesTheRowAndKillsTheLink()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, "ingetrokken@kompaz.local", "Ingetrokken Uitnodiging");
+		string link = Emails.TokenFor("ingetrokken@kompaz.local");
+
+		var deleted = await administrator.DeleteAsync($"/api/users/{invited.Id}");
+		var remaining = await administrator.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Invited}", JsonOptions.Web);
+		var redeemed = await CreateClient().PostAsJsonAsync("/api/auth/tokens", new { token = link }, JsonOptions.Web);
+
+		deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+		remaining!.Items.Should().NotContain(user => user.Email == "ingetrokken@kompaz.local");
+		redeemed.StatusCode.Should().Be(HttpStatusCode.Unauthorized);
+	}
+
+	[Test]
+	public async Task AdministratorsMayRevokeAnInvitationInTheirOwnOrganizationOnly()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+		var elsewhere = await InviteAsync(platformAdministrator, "elders@kompaz.local", "Elders Uitgenodigd");
+		await InviteAndSignInAsync(platformAdministrator, "klant@kompaz.local", "Klant Beheerder", UserRole.Administrator, tenant!.Id);
+
+		var administrator = await SignInAsync("klant@kompaz.local");
+		var own = await InviteAsync(administrator, "instructeur@klant.local", "Instructeur");
+
+		var mine = await administrator.DeleteAsync($"/api/users/{own.Id}");
+		var theirs = await administrator.DeleteAsync($"/api/users/{elsewhere.Id}");
+
+		mine.StatusCode.Should().Be(HttpStatusCode.NoContent);
+		theirs.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 	}
 
 	[Test]

@@ -1,4 +1,4 @@
-using FluentAssertions;
+﻿using FluentAssertions;
 using Kompaz.Application.Common.Models;
 using Kompaz.Application.Organizations;
 using Kompaz.Application.Organizations.Commands.CreateOrganization;
@@ -39,6 +39,24 @@ internal sealed class OrganizationTests : ApiTestBase
 
 		deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
 		readBack.StatusCode.Should().Be(HttpStatusCode.NotFound);
+	}
+
+	/// <summary>
+	/// The flag says which organization runs the platform, and the front end needs it to know where a super admin
+	/// may be placed. Nothing over the API sets it, so a tenant created here never comes back flagged.
+	/// </summary>
+	[Test]
+	public async Task ExactlyOneOrganizationRunsThePlatformAndItIsTheSeededOne()
+	{
+		var client = await SignInAsPlatformAdministratorAsync();
+
+		var created = await client.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+		var everyone = await client.GetFromJsonAsync<PaginatedList<OrganizationDto>>("/api/organizations", JsonOptions.Web);
+
+		tenant!.IsPlatform.Should().BeFalse();
+		everyone!.Items.Should().ContainSingle(organization => organization.IsPlatform)
+			.Which.Name.Should().Be("Stichting KOMPAZ");
 	}
 
 	[Test]
