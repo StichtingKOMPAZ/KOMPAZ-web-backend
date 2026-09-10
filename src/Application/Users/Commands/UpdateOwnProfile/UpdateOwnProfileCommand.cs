@@ -41,7 +41,7 @@ public class UpdateOwnProfileCommandHandler : IRequestHandler<UpdateOwnProfileCo
 		var userId = _currentUser.Id ?? throw new UnauthorizedAccessException();
 
 		var user = await _context.Users
-			.SingleOrDefaultAsync(candidate => candidate.Id == userId, cancellationToken)
+			.SingleOrDefaultAsync(candidate => candidate.Id == userId && candidate.DeletedUtc == null, cancellationToken)
 			?? throw new AuthenticationFailedException("The authenticated user no longer exists.");
 
 		user.Rename(request.Name);

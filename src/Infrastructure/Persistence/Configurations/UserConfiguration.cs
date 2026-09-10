@@ -33,7 +33,11 @@ public class UserConfiguration : IEntityTypeConfiguration<User>
 		builder.HasIndex(user => user.NormalizedEmail)
 			.IsUnique();
 
-		builder.HasIndex(user => new { user.OrganizationId, user.Status });
+		// The roster pages by organization and status and leaves deleted users out, so the filter it always
+		// applies belongs in the index rather than on the rows the index hands back.
+		builder.HasIndex(user => new { user.OrganizationId, user.DeletedUtc, user.Status });
+
+		builder.Ignore(user => user.IsDeleted);
 
 		builder.HasMany(user => user.LoginTokens)
 			.WithOne(token => token.User)

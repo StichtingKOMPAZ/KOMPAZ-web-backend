@@ -104,19 +104,35 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 	/// before the invitation email goes out, so a send that fails would otherwise leave a user who was never told and
 	/// an address the administrator can no longer invite. Repeating the request is the obvious recovery, so it works.
 	/// <para>
-	/// An address belonging to somebody who has already signed in is a genuine clash and is still refused, as is one
-	/// pending in an organization the caller did not name — with the message the caller would have got before either
-	/// way, so this discloses nothing new about who exists.
+	/// A deleted user is reached the same way, and comes back as a fresh invitation. Their row is still here holding
+	/// the address, which is the unique key, so the alternative would be that deleting somebody burns their email
+	/// address for good. Reusing the row also keeps every log and audit entry pointing at one person instead of
+	/// splitting them across two identifiers — which is the reason the row was kept in the first place.
+	/// </para>
+	/// <para>
+	/// An address belonging to somebody who has already signed in and is still here is a genuine clash and is still
+	/// refused, as is one in an organization the caller did not name — with the message the caller would have got
+	/// before either way, so this discloses nothing new about who exists.
 	/// </para>
 	/// </summary>
 	private User RenewInvitation(User existing, Guid organizationId, InviteUserCommand request, DateTimeOffset now)
 	{
-		if (existing.Status == UserStatus.Active || existing.OrganizationId != organizationId)
+		bool clashes = existing.OrganizationId != organizationId
+			|| (existing.Status == UserStatus.Active && !existing.IsDeleted);
+
+		if (clashes)
 		{
 			throw new ConflictException($"A user with the email address \"{request.Email.Trim()}\" already exists.");
 		}
 
 		OrganizationAccess.EnsureCanManageRole(_currentUser, existing.Role);
+
+		if (existing.IsDeleted)
+		{
+			existing.ReviveAsInvited(request.Name, request.Role, now);
+
+			return existing;
+		}
 
 		existing.Update(request.Name, request.Role);
 		existing.RecordInvitationSent(now);

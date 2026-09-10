@@ -86,4 +86,16 @@ Use the link below to accept the invitation and sign in. The link is valid for {
 {2}</value>
     <comment>{0} recipient name, {1} organization name, {2} invitation link, {3} days the link stays valid.</comment>
   </data>
+  <data name="AccountDeletedSubject" xml:space="preserve">
+    <value>Your account has been deleted</value>
+    <comment></comment>
+  </data>
+  <data name="AccountDeletedBody" xml:space="preserve">
+    <value>Hello {0},
+
+Your zelfzorgacademie account has been deleted by an administrator. You can no longer sign in, and any sign-in links you were sent no longer work.
+
+If you think this is a mistake, please contact your organization’s administrator.</value>
+    <comment>{0} recipient name.</comment>
+  </data>
 </root>

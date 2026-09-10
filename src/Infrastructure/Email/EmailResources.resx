@@ -86,4 +86,16 @@ Gebruik onderstaande link om de uitnodiging te accepteren en in te loggen. De li
 {2}</value>
     <comment>{0} recipient name, {1} organization name, {2} invitation link, {3} days the link stays valid.</comment>
   </data>
+  <data name="AccountDeletedSubject" xml:space="preserve">
+    <value>Jouw account is verwijderd</value>
+    <comment>Subject of the account-deletion notice. Placeholder wording from the ticket; final copy pending.</comment>
+  </data>
+  <data name="AccountDeletedBody" xml:space="preserve">
+    <value>Hallo {0},
+
+Je account voor de zelfzorgacademie is verwijderd door een beheerder. Je kunt niet meer inloggen en eerder verstuurde inloglinks werken niet meer.
+
+Denk je dat dit niet klopt? Neem dan contact op met de beheerder van je organisatie.</value>
+    <comment>{0} recipient name. Placeholder wording; final copy pending.</comment>
+  </data>
 </root>

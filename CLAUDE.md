@@ -31,9 +31,12 @@ dotnet ef migrations add Name --project src/Infrastructure --startup-project src
    ASP.NET). `AuthorizeTests` enforces it and `AuthorizationBehaviour` refuses a request with neither at runtime, so
    forgetting to think about authorization fails instead of quietly publishing a use case. Only the four
    authentication entry points are anonymous, and that list is asserted.
-3. **Tenancy is manual.** There are no global query filters. Every handler calls `OrganizationAccess`
-   (`EnsureCanRead` / `EnsureCanManage` / `EnsureCanManageRole` / `ResolveTarget`). An unscoped new query is a
-   security bug, not an oversight. `[Authorize(MinimumRole = …)]` is a floor on the role, never a tenant check.
+3. **Tenancy is manual, and so is soft delete.** There are no global query filters. Every handler calls
+   `OrganizationAccess` (`EnsureCanRead` / `EnsureCanManage` / `EnsureCanManageRole` / `ResolveTarget`), and every
+   query over `Users` states `DeletedUtc == null` for itself. An unscoped new query is a security bug, not an
+   oversight. `[Authorize(MinimumRole = …)]` is a floor on the role, never a tenant check. The two deliberate
+   exceptions to the delete filter are `RestoreUserCommand` and `InviteUserCommand`, whose whole job involves a
+   deleted row; a filter that applied itself would make those two fail quietly instead of loudly.
 4. **Never edit a migration that has shipped** — instances migrate on startup. Fix forward. An unshipped migration
    gets deleted and regenerated rather than stacked with a fixup.
 5. **Audit fields are stamped by `AuditableEntityInterceptor`** — never set `CreatedUtc`/`UpdatedUtc`/`CreatedBy`/
@@ -66,6 +69,10 @@ dotnet ef migrations add Name --project src/Infrastructure --startup-project src
 
 ## Things that have already cost time
 
+- **An access token outlives the account.** It is a signed statement about who somebody was when it was issued,
+  so deleting a user does not invalidate one. Deleting their refresh tokens only stops the *next* hour;
+  `AccountStatusBehaviour` is what stops the current one, at the cost of a primary-key lookup per authenticated
+  request. Anything else that revokes access needs the same treatment — the claims on the token will not do it.
 - **`DateTimeOffset` comparisons.** The SQLite provider could not translate them at all, which is why token expiry
   was checked in memory; Npgsql can. Login-token expiry is now one condition of the atomic claim. Refresh-token
   expiry deliberately is **not**, because losing that `UPDATE` revokes the session, and a token expiring between the

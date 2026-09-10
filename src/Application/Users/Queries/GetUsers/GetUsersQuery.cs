@@ -28,6 +28,13 @@ public record GetUsersQuery : PagedQuery, IRequest<PaginatedList<UserDto>>
 	/// Gets the organization to list. Defaults to the caller's own organization.
 	/// </summary>
 	public Guid? OrganizationId { get; init; }
+
+	/// <summary>
+	/// Gets a value indicating whether deleted users are listed too. Off by default, so the roster an
+	/// administrator works from shows the people who are actually in the organization; on, it is how they find
+	/// somebody to restore.
+	/// </summary>
+	public bool IncludeDeleted { get; init; }
 }
 
 public class GetUsersQueryValidator : PagedQueryValidator<GetUsersQuery>
@@ -61,6 +68,14 @@ public class GetUsersQueryHandler : IRequestHandler<GetUsersQuery, PaginatedList
 	public Task<PaginatedList<UserDto>> Handle(GetUsersQuery request, CancellationToken cancellationToken)
 	{
 		IQueryable<User> query = _context.Users.AsNoTracking();
+
+		// Stated here rather than as a global query filter, for the same reason the tenant boundary is: a filter
+		// that applies itself is one nobody reads, and the queries that must not have it — restoring a user,
+		// inviting an address that belongs to a deleted one — are exactly the ones that would go wrong quietly.
+		if (!request.IncludeDeleted)
+		{
+			query = query.Where(user => user.DeletedUtc == null);
+		}
 
 		if (request.OrganizationId is { } requestedOrganizationId)
 		{

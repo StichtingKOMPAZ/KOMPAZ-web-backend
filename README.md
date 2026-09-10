@@ -145,7 +145,7 @@ could invite again. Only an address belonging to somebody who has already signed
 Only `email` and `name` are required. `organizationId` defaults to the caller's own organization and `role` to
 `Member`, which is the whole request an organization administrator can make; a platform administrator states both.
 
-**An invitation link lasts seven days** (`Authentication:InvitationLifetimeDays`), against fifteen minutes for a
+**An invitation link lasts seven days** (`Authentication:InvitationLifetimeDays`), against thirty minutes for a
 sign-in link, because the invitee has to notice the email before they can act on it. The deadline is fixed when the
 link is issued, so reconfiguring the lifetime neither expires nor revives one already sent.
 
@@ -157,7 +157,44 @@ An invitation that lapses is not withdrawn — the row stays on the list until s
 
 **Revoking an invitation is `DELETE /api/users/{id}`**, the same request as deleting any user, and it takes the
 outstanding link with it rather than leaving one that would sign the invitee in after they were removed. There is no
-separate revoke endpoint and no `410`-style tombstone: an invitation nobody accepted has left nothing behind.
+separate revoke endpoint.
+
+## Deleting and restoring a user
+
+`DELETE /api/users/{id}` deletes a user, `POST /api/users/{id}/restore` undoes it.
+
+**The deletion is a soft one.** The row is marked with `deletedUtc` rather than removed, because three things need
+it to outlive the deletion: restoring has to know what to put back, `createdBy` and `updatedBy` on every other
+table refer to people by identifier, and the email address is the unique key. Deleting the row for real would burn
+the address and orphan the history in one go.
+
+**Access stops immediately, not when the token expires.** Their sign-in links and refresh tokens are deleted
+outright — a link sitting in an inbox has to stop working the moment the account does — and every authenticated
+request checks that the account behind the token is still there. Without that last part an access token, which is a
+signed statement about who somebody was an hour ago, would carry a deleted administrator through the rest of its
+lifetime.
+
+**The user is emailed** that their account is gone. Delivery failure is logged, not returned: the deletion is
+already committed, so reporting it as failed would invite a retry that now answers `404`.
+
+**An organization cannot lose its last administrator** — `409`. Its members could still sign in and would be
+stuck, because only an administrator can invite and only an administrator can appoint one, so recovery would need a
+platform administrator. The same rule covers the platform organization, and so the last platform administrator.
+
+**Inviting a deleted address brings the same person back** as a fresh invitation, on the same row and therefore the
+same identifier, with whatever name and role the new invitation names. The alternative is that deleting somebody
+burns their email address permanently. `activatedUtc` and `lastLoginUtc` are left as they were: they record what
+did happen.
+
+**Restoring returns the user to exactly what they were** — the status is untouched by deleting, which is why it is
+kept separate from `deletedUtc` rather than being a value of it. It does not hand back their credentials, so a
+restored user signs in again from the login page. Restoring somebody who is not deleted is not an error, so two
+administrators reaching for the same undo are both told the account is back.
+
+**Deleted means gone from every endpoint that addresses one person** — reading, editing, re-sending an invitation
+and deleting again all answer `404`. The two exceptions are the ones whose subject is a deleted row: the restore
+endpoint, and the roster asked with `includeDeleted=true`, which is where an administrator finds somebody to
+restore.
 
 ## Endpoints
 
@@ -180,6 +217,7 @@ separate revoke endpoint and no `410`-style tombstone: an invitation nobody acce
 | `/api/users/me` | PUT | Member (their own profile) |
 | `/api/users/{id}` | PUT | Administrator |
 | `/api/users/{id}` | DELETE | Administrator |
+| `/api/users/{id}/restore` | POST | Administrator |
 
 ## Editing a profile
 
@@ -211,9 +249,11 @@ so granting it anywhere else is a `409` — a clash with where the role lives, n
 usually entitled to grant it. Nothing moves a user between organizations, so the invariant only needs stating where
 the role is handed out.
 
-**The role cannot be abandoned by its last holder.** Nobody may delete their own account, and only a platform
-administrator may remove another, so a platform administrator giving up the role is the one way to leave the system
-with nobody able to grant it back. That returns `409` unless somebody else already holds it.
+**The role cannot be abandoned by its last holder.** Nobody may delete their own account, only a platform
+administrator may remove another, and deleting the last administrator of any organization is refused outright — so
+a platform administrator giving up the role is the one remaining way to leave the system with nobody able to grant
+it back. That returns `409` unless somebody else already holds it. A deleted administrator does not count as one
+who remains: they cannot sign in, so they could not appoint anybody.
 
 **A platform administrator can only be administered by one.** Editing, deleting, or re-inviting somebody who holds
 the role is reserved for other platform administrators, whether or not the request changes the role itself, so an
@@ -222,13 +262,15 @@ organization administrator who happens to share their organization cannot reach 
 ## Querying users
 
 ```
-GET /api/users?status=Invited&search=jansen&organizationId=<guid>&pageNumber=1&pageSize=25
+GET /api/users?status=Invited&search=jansen&organizationId=<guid>&includeDeleted=false&pageNumber=1&pageSize=25
 ```
 
 - `status` — `Invited` or `Active`; omit for both. `Invited` is the beheer page's *uitgenodigd* tab, expired
   invitations included; read `invitationExpiresUtc` to tell the two badges apart
 - `search` — case-insensitive fragment matched against name and email, accents included, so `renée` finds `Renée`
 - `organizationId` — platform administrators only; defaults to the caller's own organization
+- `includeDeleted` — off by default, so the roster shows the people actually in the organization; on, it is the
+  one read that returns deleted users, which is how an administrator finds one to restore. Read `deletedUtc`
 - `pageNumber` / `pageSize` — `pageSize` is capped at 100
 
 Every list endpoint returns the same envelope:

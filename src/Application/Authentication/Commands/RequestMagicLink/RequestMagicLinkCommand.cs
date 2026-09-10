@@ -48,8 +48,11 @@ public class RequestMagicLinkCommandHandler : IRequestHandler<RequestMagicLinkCo
 	{
 		string normalizedEmail = User.Normalize(request.Email);
 
+		// A deleted user is treated exactly like an address nobody has: no link, and the same answer either way.
 		var user = await _context.Users
-			.SingleOrDefaultAsync(candidate => candidate.NormalizedEmail == normalizedEmail, cancellationToken);
+			.SingleOrDefaultAsync(
+				candidate => candidate.NormalizedEmail == normalizedEmail && candidate.DeletedUtc == null,
+				cancellationToken);
 
 		if (user is null)
 		{

@@ -3,6 +3,7 @@ using Kompaz.Application.Users;
 using Kompaz.Application.Users.Commands.DeleteUser;
 using Kompaz.Application.Users.Commands.InviteUser;
 using Kompaz.Application.Users.Commands.ResendUserInvitation;
+using Kompaz.Application.Users.Commands.RestoreUser;
 using Kompaz.Application.Users.Commands.UpdateOwnProfile;
 using Kompaz.Application.Users.Commands.UpdateUser;
 using Kompaz.Application.Users.Queries.GetUser;
@@ -28,6 +29,7 @@ internal class UserEndpoints : IEndpointGroup
 			.MapGet(GetUser, "{id:guid}")
 			.MapPost(InviteUser, "invitations")
 			.MapPost(ResendUserInvitation, "{id:guid}/invitations")
+			.MapPost(RestoreUser, "{id:guid}/restore")
 			.MapPut(UpdateOwnProfile, "me")
 			.MapPut(UpdateUser, "{id:guid}")
 			.MapDelete(DeleteUser, "{id:guid}");
@@ -36,7 +38,8 @@ internal class UserEndpoints : IEndpointGroup
 	}
 
 	/// <summary>
-	/// Returns a page of users, optionally limited to those still invited or already active.
+	/// Returns a page of users, optionally limited to those still invited or already active. Deleted users are left
+	/// out unless <c>includeDeleted</c> asks for them, which is how an administrator finds one to restore.
 	/// </summary>
 	public async Task<Ok<PaginatedList<UserDto>>> GetUsers(
 		ISender sender,
@@ -44,6 +47,7 @@ internal class UserEndpoints : IEndpointGroup
 		UserStatus? status = null,
 		string? search = null,
 		Guid? organizationId = null,
+		bool includeDeleted = false,
 		int pageNumber = 1,
 		int pageSize = PagedQuery.DefaultPageSize)
 	{
@@ -52,6 +56,7 @@ internal class UserEndpoints : IEndpointGroup
 			Status = status,
 			Search = search,
 			OrganizationId = organizationId,
+			IncludeDeleted = includeDeleted,
 			PageNumber = pageNumber,
 			PageSize = pageSize,
 		};
@@ -60,7 +65,7 @@ internal class UserEndpoints : IEndpointGroup
 	}
 
 	/// <summary>
-	/// Returns a single user.
+	/// Returns a single user. Deleted users are not found here; they are listed by the roster on request.
 	/// </summary>
 	public async Task<Ok<UserDto>> GetUser(ISender sender, Guid id, CancellationToken cancellationToken)
 	{
@@ -108,13 +113,24 @@ internal class UserEndpoints : IEndpointGroup
 	}
 
 	/// <summary>
-	/// Deletes a user.
+	/// Deletes a user. They lose access immediately and are emailed about it; an administrator can undo this with
+	/// the restore endpoint.
 	/// </summary>
 	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<NoContent> DeleteUser(ISender sender, Guid id, CancellationToken cancellationToken)
 	{
 		await sender.Send(new DeleteUserCommand(id), cancellationToken);
 		return TypedResults.NoContent();
+	}
+
+	/// <summary>
+	/// Restores a deleted user, leaving one who is not deleted as they are. Their sign-in links and sessions are
+	/// not restored with them, so they sign in again from the login page.
+	/// </summary>
+	public async Task<Ok<UserDto>> RestoreUser(ISender sender, Guid id, CancellationToken cancellationToken)
+	{
+		var user = await sender.Send(new RestoreUserCommand(id), cancellationToken);
+		return TypedResults.Ok(user);
 	}
 
 	/// <summary>

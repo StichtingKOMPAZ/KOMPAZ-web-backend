@@ -8,6 +8,11 @@ namespace Kompaz.Application.Users.Queries.GetUser;
 /// <summary>
 /// Returns a single user. Anybody may read their own profile; reading somebody else needs administrator rights over
 /// their organization, so this endpoint cannot be used to walk the roster that <c>GET /api/users</c> gates.
+/// <para>
+/// A deleted user is not found here, the same as everywhere else that addresses one person. The one read that does
+/// see them is the roster asked with <c>includeDeleted</c>, which is where an administrator picks one to restore —
+/// keeping "deleted means gone" true of every endpoint except the two whose whole subject is a deleted row.
+/// </para>
 /// </summary>
 [Authorize]
 public record GetUserQuery(Guid Id) : IRequest<UserDto>;
@@ -27,7 +32,7 @@ public class GetUserQueryHandler : IRequestHandler<GetUserQuery, UserDto>
 	{
 		var user = await _context.Users
 			.AsNoTracking()
-			.Where(candidate => candidate.Id == request.Id)
+			.Where(candidate => candidate.Id == request.Id && candidate.DeletedUtc == null)
 			.Select(UserDto.Projection)
 			.SingleOrDefaultAsync(cancellationToken)
 			?? throw new NotFoundException(nameof(User), request.Id);

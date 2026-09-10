@@ -31,6 +31,23 @@ public class User : AuditableEntity
 
 	public DateTimeOffset? LastLoginUtc { get; set; }
 
+	/// <summary>
+	/// Gets when an administrator deleted this user, or <see langword="null"/> for a user who is not deleted.
+	/// <para>
+	/// Deletion is a soft one, and deliberately separate from <see cref="Status"/> rather than a value of it: the
+	/// status records where somebody is in the invitation lifecycle, and overwriting it would lose the answer that
+	/// restoring them has to put back. It also keeps the row, which is what the logs and the audit trail on every
+	/// other table point at — <c>CreatedBy</c> and <c>UpdatedBy</c> hold identifiers, so a row removed for real
+	/// would leave those unresolvable.
+	/// </para>
+	/// </summary>
+	public DateTimeOffset? DeletedUtc { get; set; }
+
+	/// <summary>
+	/// Gets a value indicating whether an administrator has deleted this user.
+	/// </summary>
+	public bool IsDeleted => DeletedUtc is not null;
+
 	public ICollection<LoginToken> LoginTokens { get; } = [];
 
 	public ICollection<RefreshToken> RefreshTokens { get; } = [];
@@ -73,6 +90,42 @@ public class User : AuditableEntity
 
 	public void RecordInvitationSent(DateTimeOffset now)
 	{
+		InvitedUtc = now;
+	}
+
+	/// <summary>
+	/// Marks the user as deleted. Their credentials are not this object's to remove; the handler deletes those
+	/// outright, because a deleted user must not be able to sign in even if they are restored later.
+	/// </summary>
+	public void Delete(DateTimeOffset now)
+	{
+		DeletedUtc = now;
+	}
+
+	/// <summary>
+	/// Undoes a deletion, returning the user to exactly the lifecycle stage they were at. It does not give them a
+	/// way back in: their sign-in links and sessions were deleted, so they start again from the login page.
+	/// </summary>
+	public void Restore()
+	{
+		DeletedUtc = null;
+	}
+
+	/// <summary>
+	/// Brings a deleted user back as a fresh invitation, under whatever name and role the new invitation names.
+	/// <para>
+	/// This is what stops deleting somebody from burning their email address for good. The address is the unique
+	/// key and the row outlives the deletion, so inviting it again has to reuse that row — which also keeps every
+	/// log and audit entry pointing at the same person rather than splitting them across two identifiers.
+	/// <see cref="ActivatedUtc"/> and <see cref="LastLoginUtc"/> are left alone on purpose: they record what did
+	/// happen, and this invitation has not been accepted yet.
+	/// </para>
+	/// </summary>
+	public void ReviveAsInvited(string name, UserRole role, DateTimeOffset now)
+	{
+		Restore();
+		Update(name, role);
+		Status = UserStatus.Invited;
 		InvitedUtc = now;
 	}
 

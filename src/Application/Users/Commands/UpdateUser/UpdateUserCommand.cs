@@ -43,7 +43,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 	{
 		var user = await _context.Users
 			.Include(candidate => candidate.Organization)
-			.SingleOrDefaultAsync(candidate => candidate.Id == request.Id, cancellationToken)
+			.SingleOrDefaultAsync(candidate => candidate.Id == request.Id && candidate.DeletedUtc == null, cancellationToken)
 			?? throw new NotFoundException(nameof(User), request.Id);
 
 		OrganizationAccess.EnsureCanManage(_currentUser, user.OrganizationId);
@@ -74,8 +74,8 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 
 	/// <summary>
 	/// Refuses a demotion that would leave the platform with nobody able to grant the role back. Deleting the last
-	/// platform administrator is already impossible — only a platform administrator may remove one, and nobody may
-	/// remove themselves — so giving up the role is the one remaining way to lock everybody out.
+	/// one is refused too, so giving up the role is the other way it could happen. A deleted platform administrator
+	/// does not count as one who remains: they cannot sign in, so they could not appoint anybody.
 	/// </summary>
 	private async Task EnsureAPlatformAdministratorRemainsAsync(User user, UserRole newRole, CancellationToken cancellationToken)
 	{
@@ -86,7 +86,9 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 
 		bool anotherRemains = await _context.Users
 			.AnyAsync(
-				candidate => candidate.Id != user.Id && candidate.Role == UserRole.PlatformAdministrator,
+				candidate => candidate.Id != user.Id
+					&& candidate.DeletedUtc == null
+					&& candidate.Role == UserRole.PlatformAdministrator,
 				cancellationToken);
 
 		if (!anotherRemains)

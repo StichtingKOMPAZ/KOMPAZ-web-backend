@@ -26,6 +26,10 @@ internal static class EmailText
 
 	public const string InvitationBody = nameof(InvitationBody);
 
+	public const string AccountDeletedSubject = nameof(AccountDeletedSubject);
+
+	public const string AccountDeletedBody = nameof(AccountDeletedBody);
+
 	private static readonly ResourceManager Resources =
 		new("Kompaz.Infrastructure.Email.EmailResources", typeof(EmailText).Assembly);
 

@@ -28,7 +28,7 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
 
 		return await _context.Users
 			.AsNoTracking()
-			.Where(user => user.Id == userId)
+			.Where(user => user.Id == userId && user.DeletedUtc == null)
 			.Select(UserDto.Projection)
 			.SingleOrDefaultAsync(cancellationToken)
 			?? throw new AuthenticationFailedException("The authenticated user no longer exists.");

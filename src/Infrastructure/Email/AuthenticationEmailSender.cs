@@ -62,6 +62,19 @@ internal sealed class AuthenticationEmailSender : IAuthenticationEmailSender
 			cancellationToken);
 	}
 
+	public Task SendAccountDeletedAsync(string email, string name, CancellationToken cancellationToken = default)
+	{
+		var culture = _settings.Culture;
+
+		return _dispatcher.SendAsync(
+			new EmailMessage(
+				email,
+				name,
+				EmailText.Get(EmailText.AccountDeletedSubject, culture),
+				EmailText.Get(EmailText.AccountDeletedBody, culture, name)),
+			cancellationToken);
+	}
+
 	private static string BuildLink(string template, string token) =>
 		template.Replace(EmailSettings.TokenPlaceholder, Uri.EscapeDataString(token), StringComparison.Ordinal);
 }

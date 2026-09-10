@@ -117,6 +117,28 @@ internal class AuthenticationEmailSenderTests
 		settings.Validate().Should().Contain("DefaultLanguage");
 	}
 
+	[Test]
+	public async Task TheAccountDeletedNoticeIsDutchAndCarriesNoLink()
+	{
+		var (sender, dispatcher) = CreateSender();
+
+		await sender.SendAccountDeletedAsync("iemand@kompaz.local", "Iemand Anders");
+
+		dispatcher.Sent!.Subject.Should().Be("Jouw account is verwijderd");
+		dispatcher.Sent.Body.Should().StartWith("Hallo Iemand Anders,");
+		dispatcher.Sent.Body.Should().NotContain("http");
+	}
+
+	[Test]
+	public async Task TheAccountDeletedNoticeFollowsTheConfiguredLanguageToo()
+	{
+		var (sender, dispatcher) = CreateSender(language: "en");
+
+		await sender.SendAccountDeletedAsync("somebody@kompaz.local", "Some Body");
+
+		dispatcher.Sent!.Subject.Should().Be("Your account has been deleted");
+	}
+
 	private static (AuthenticationEmailSender Sender, RecordingDispatcher Dispatcher) CreateSender(
 		string language = "nl",
 		int magicLinkLifetimeMinutes = 30)

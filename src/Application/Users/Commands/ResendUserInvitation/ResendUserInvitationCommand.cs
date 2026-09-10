@@ -46,7 +46,7 @@ public class ResendUserInvitationCommandHandler : IRequestHandler<ResendUserInvi
 	{
 		var user = await _context.Users
 			.Include(candidate => candidate.Organization)
-			.SingleOrDefaultAsync(candidate => candidate.Id == request.Id, cancellationToken)
+			.SingleOrDefaultAsync(candidate => candidate.Id == request.Id && candidate.DeletedUtc == null, cancellationToken)
 			?? throw new NotFoundException(nameof(User), request.Id);
 
 		OrganizationAccess.EnsureCanManage(_currentUser, user.OrganizationId);

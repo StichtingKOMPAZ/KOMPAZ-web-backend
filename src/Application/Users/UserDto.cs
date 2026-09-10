@@ -19,7 +19,8 @@ public sealed record UserDto(
 	DateTimeOffset? InvitedUtc,
 	DateTimeOffset? ActivatedUtc,
 	DateTimeOffset? LastLoginUtc,
-	DateTimeOffset? InvitationExpiresUtc)
+	DateTimeOffset? InvitationExpiresUtc,
+	DateTimeOffset? DeletedUtc)
 {
 	private static readonly Func<User, UserDto> Materialize = Projection.Compile();
 
@@ -46,7 +47,8 @@ public sealed record UserDto(
 		user.LastLoginUtc,
 		user.LoginTokens
 			.Where(token => token.Purpose == LoginTokenPurpose.Invitation && token.ConsumedUtc == null)
-			.Max(token => (DateTimeOffset?)token.ExpiresUtc));
+			.Max(token => (DateTimeOffset?)token.ExpiresUtc),
+		user.DeletedUtc);
 
 	/// <summary>
 	/// Maps an entity that is already loaded, including its <see cref="User.Organization"/>.

@@ -10,6 +10,7 @@ namespace Kompaz.Application.FunctionalTests;
 internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 {
 	private readonly ConcurrentDictionary<string, string> _tokensByEmail = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentBag<string> _accountDeletedNotices = [];
 
 	/// <summary>
 	/// Gets or sets a value indicating whether sending fails, the way a relay that is down does. Set it to reach
@@ -33,6 +34,28 @@ internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 		_tokensByEmail[email] = token;
 		return Task.CompletedTask;
 	}
+
+	public Task SendAccountDeletedAsync(string email, string name, CancellationToken cancellationToken = default)
+	{
+		if (DeliveryFails)
+		{
+			throw new InvalidOperationException("The relay refused the message.");
+		}
+
+		_accountDeletedNotices.Add(email);
+
+		// A deleted user has no live link any more, and leaving the last one readable would let a test follow a
+		// link that the deletion was supposed to have taken away.
+		_tokensByEmail.TryRemove(email, out _);
+
+		return Task.CompletedTask;
+	}
+
+	/// <summary>
+	/// Whether the account-deleted notice went to an address.
+	/// </summary>
+	public bool ToldAboutDeletion(string email) =>
+		_accountDeletedNotices.Contains(email, StringComparer.OrdinalIgnoreCase);
 
 	/// <summary>
 	/// Returns the most recent secret sent to an address, failing loudly when nothing was sent.
