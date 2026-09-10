@@ -140,7 +140,7 @@ internal sealed class UserDeletionTests : ApiTestBase
 
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{member.Id}",
-			new { name = "Andere Naam", role = UserRole.Member },
+			new { name = "Andere Naam", email = MemberEmail, role = UserRole.Member },
 			JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.NotFound);

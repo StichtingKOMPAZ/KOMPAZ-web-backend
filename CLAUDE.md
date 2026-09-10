@@ -62,17 +62,22 @@ dotnet ef migrations add Name --project src/Infrastructure --startup-project src
 10. **Behind a reverse proxy, configure `ForwardedHeaders`.** Unconfigured, every per-client decision keys on the
     proxy's address, so the whole deployment shares one rate-limit partition and HTTPS redirection loops. Nothing is
     believed unless named; `TrustAnyProxy` is only safe where the app is unreachable except through the proxy.
-11. Code style: tabs, CRLF, `records` for requests, one file per slice holding request + validator + handler, write
+11. **"Somebody has to be left" lives in `AdministratorCoverage`, not in the command.** Deleting, demoting and
+    moving all take a person out of an organization's administrators, and a move or a demotion can also take the
+    last platform administrator. Three commands, one rule; a fourth way to remove somebody asks there too.
+12. Code style: tabs, CRLF, `records` for requests, one file per slice holding request + validator + handler, write
     the validator even when it would be empty, DTOs suffixed `Dto` with a static `Projection` expression so queries
     project in the database. `FluentValidation`, `MediatR` and `Microsoft.EntityFrameworkCore` are global usings in
     Application — do not add those directives. Match surrounding code.
 
 ## Things that have already cost time
 
-- **An access token outlives the account.** It is a signed statement about who somebody was when it was issued,
-  so deleting a user does not invalidate one. Deleting their refresh tokens only stops the *next* hour;
-  `AccountStatusBehaviour` is what stops the current one, at the cost of a primary-key lookup per authenticated
-  request. Anything else that revokes access needs the same treatment — the claims on the token will not do it.
+- **An access token outlives the account, and what it says about it.** It is a signed statement about who somebody
+  was when it was issued, so deleting a user, demoting them or moving them between organizations invalidates
+  none of it. Deleting their refresh tokens only stops the *next* hour; `AccountStatusBehaviour` is what stops the
+  current one, comparing the `role` and `organizationId` claims against the row at the cost of a primary-key
+  lookup per authenticated request. Anything else that changes what somebody may do needs to be compared there
+  too — the claims on the token will not notice on their own.
 - **`DateTimeOffset` comparisons.** The SQLite provider could not translate them at all, which is why token expiry
   was checked in memory; Npgsql can. Login-token expiry is now one condition of the atomic claim. Refresh-token
   expiry deliberately is **not**, because losing that `UPDATE` revokes the session, and a token expiring between the

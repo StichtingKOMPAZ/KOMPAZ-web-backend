@@ -130,6 +130,34 @@ public class User : AuditableEntity
 	}
 
 	/// <summary>
+	/// Points the account at a different address.
+	/// <para>
+	/// This is the sign-in identity, not a contact detail, so whoever holds the new inbox can sign in as this
+	/// person from now on. Nothing here proves they asked for it — an administrator is trusted to have checked —
+	/// which is why the caller also retires any link already sent to the old address.
+	/// </para>
+	/// </summary>
+	public void ChangeEmail(string email)
+	{
+		Email = email.Trim();
+		NormalizedEmail = Normalize(email);
+	}
+
+	/// <summary>
+	/// Moves the user into another organization, which costs them their role.
+	/// <para>
+	/// A role is held within an organization and says nothing about the next one, so carrying it across would hand
+	/// somebody rights over people who never appointed them. They arrive as a member and are promoted there if the
+	/// new organization wants that.
+	/// </para>
+	/// </summary>
+	public void MoveTo(Guid organizationId)
+	{
+		OrganizationId = organizationId;
+		Role = UserRole.Member;
+	}
+
+	/// <summary>
 	/// Applies an administrator's edit, which may also move the user between roles.
 	/// </summary>
 	public void Update(string name, UserRole role)

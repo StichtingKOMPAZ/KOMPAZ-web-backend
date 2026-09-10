@@ -50,7 +50,7 @@ internal sealed class AuditStampingTests : ApiTestBase
 
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{invited.Id}",
-			new UserEndpoints.UpdateUserRequest("Hernoemd", UserRole.Member), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest("Hernoemd", invited.Email, UserRole.Member), JsonOptions.Web);
 		response.EnsureSuccessStatusCode();
 
 		var stored = await FindUserAsync(invited.Id);

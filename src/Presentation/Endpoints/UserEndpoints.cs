@@ -103,12 +103,16 @@ internal class UserEndpoints : IEndpointGroup
 	}
 
 	/// <summary>
-	/// Updates a user's display name and role, as an administrator.
+	/// Updates a user's name, email address, role and organization, as an administrator. Omitting <c>role</c> or
+	/// <c>organizationId</c> leaves that field alone, which is the whole request an organization administrator
+	/// can make: changing either is reserved to platform administrators.
 	/// </summary>
 	[ProducesResponseType<ProblemDetails>(StatusCodes.Status409Conflict)]
 	public async Task<Ok<UserDto>> UpdateUser(ISender sender, Guid id, UpdateUserRequest request, CancellationToken cancellationToken)
 	{
-		var user = await sender.Send(new UpdateUserCommand(id, request.Name, request.Role), cancellationToken);
+		var command = new UpdateUserCommand(id, request.Name, request.Email, request.Role, request.OrganizationId);
+		var user = await sender.Send(command, cancellationToken);
+
 		return TypedResults.Ok(user);
 	}
 
@@ -134,7 +138,12 @@ internal class UserEndpoints : IEndpointGroup
 	}
 
 	/// <summary>
-	/// The body of a user update. The identifier comes from the route.
+	/// The body of a user update. The identifier comes from the route. <c>Role</c> and <c>OrganizationId</c> are
+	/// optional and mean "leave this alone"; the fields every editor can change are always sent.
 	/// </summary>
-	internal sealed record UpdateUserRequest(string Name, UserRole Role);
+	internal sealed record UpdateUserRequest(
+		string Name,
+		string Email,
+		UserRole? Role = null,
+		Guid? OrganizationId = null);
 }

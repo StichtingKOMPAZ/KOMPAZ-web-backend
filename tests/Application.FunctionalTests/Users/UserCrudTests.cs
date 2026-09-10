@@ -44,7 +44,7 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{invited.Id}",
-			new UserEndpoints.UpdateUserRequest("Hernoemde Collega", UserRole.Administrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest("Hernoemde Collega", invited.Email, UserRole.Administrator), JsonOptions.Web);
 		var updated = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -61,7 +61,7 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{invited.Id}",
-			new UserEndpoints.UpdateUserRequest(" ", UserRole.Member), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest(" ", invited.Email, UserRole.Member), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
 	}
@@ -100,7 +100,7 @@ internal sealed class UserCrudTests : ApiTestBase
 		var read = await member.GetAsync($"/api/users/{me!.Id}");
 		var write = await member.PutAsJsonAsync(
 			$"/api/users/{me.Id}",
-			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.Member), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest("Andere Naam", me.Email, UserRole.Member), JsonOptions.Web);
 
 		read.StatusCode.Should().Be(HttpStatusCode.OK);
 		write.StatusCode.Should().Be(HttpStatusCode.Forbidden);
@@ -126,7 +126,7 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var response = await platformAdministrator.PutAsJsonAsync(
 			$"/api/users/{me!.Id}",
-			new UserEndpoints.UpdateUserRequest(me.Name, UserRole.Administrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest(me.Name, me.Email, UserRole.Administrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
 	}
@@ -140,7 +140,7 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var response = await platformAdministrator.PutAsJsonAsync(
 			$"/api/users/{me!.Id}",
-			new UserEndpoints.UpdateUserRequest(me.Name, UserRole.Administrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest(me.Name, me.Email, UserRole.Administrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.OK);
 	}
@@ -158,10 +158,10 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var promote = await administrator.PutAsJsonAsync(
 			$"/api/users/{member.Id}",
-			new UserEndpoints.UpdateUserRequest(member.Name, UserRole.Administrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest(member.Name, member.Email, UserRole.Administrator), JsonOptions.Web);
 		var rename = await administrator.PutAsJsonAsync(
 			$"/api/users/{member.Id}",
-			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.Member), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest("Andere Naam", member.Email, UserRole.Member), JsonOptions.Web);
 
 		promote.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 		rename.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -181,7 +181,7 @@ internal sealed class UserCrudTests : ApiTestBase
 
 		var response = await platformAdministrator.PutAsJsonAsync(
 			$"/api/users/{member.Id}",
-			new UserEndpoints.UpdateUserRequest(member.Name, UserRole.PlatformAdministrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest(member.Name, member.Email, UserRole.PlatformAdministrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.Conflict);
 	}
@@ -196,7 +196,7 @@ internal sealed class UserCrudTests : ApiTestBase
 		// The role is left alone, so only the unconditional guard stands between them and editing their superior.
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{me!.Id}",
-			new UserEndpoints.UpdateUserRequest("Andere Naam", UserRole.PlatformAdministrator), JsonOptions.Web);
+			new UserEndpoints.UpdateUserRequest("Andere Naam", me.Email, UserRole.PlatformAdministrator), JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
 	}

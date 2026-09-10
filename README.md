@@ -159,6 +159,39 @@ An invitation that lapses is not withdrawn — the row stays on the list until s
 outstanding link with it rather than leaving one that would sign the invitee in after they were removed. There is no
 separate revoke endpoint.
 
+## Editing a user
+
+`PUT /api/users/{id}` changes a user's name, email address, role and organization.
+
+**`name` and `email` are always sent; `role` and `organizationId` are optional and mean "leave this alone".** The
+split follows who is editing: name and email are on every editor's form, so every request carries them, while role
+and organization only appear for a platform administrator — so a request without them is saying they were never
+its to change. Sending a role or organization that matches the current one is not a change and needs no rights.
+
+**Only a platform administrator can change a role or an organization.** An organization administrator edits names
+and addresses, and gets `403` for either of the other two — including a demotion, which the grant rule alone would
+have allowed. Who administers an organization is the platform's call. Inviting stays looser: an administrator may
+invite members, because that creates one rather than moving an existing person between roles.
+
+**The email address is the sign-in identity, and nothing verifies it.** An administrator is trusted to have
+checked, so the account answers to the new address immediately — and whoever holds that inbox can sign in as this
+person. Any sign-in link already sent to the old address is deleted, because it would otherwise let whoever still
+reads that inbox open an account that is no longer theirs. Sessions are left alone: the person has not changed,
+only where their post goes. A duplicate address is `409`.
+
+**Moving somebody to another organization resets their role to `Member` and ends their sessions.** A role is held
+within an organization and says nothing about the next one, so carrying it across would hand somebody rights over
+people who never appointed them; and every access token they hold names the organization they have left. A request
+that both moves and names a role other than `Member` is `409` rather than half-applied — promote them in the new
+organization with the next request. Moving the last administrator out of an organization is refused, the same as
+deleting them.
+
+**A demotion or a move takes effect at once, not when the token expires.** Authorization is read from the `role`
+and `organizationId` claims, which were signed before the edit, so every authenticated request checks them against
+the row. A stale token is `401`; a client still holding a refresh token exchanges it and comes straight back with
+claims that match, so a demotion costs one round trip rather than a sign-in. A move ends the session, so that one
+does need a fresh sign-in.
+
 ## Deleting and restoring a user
 
 `DELETE /api/users/{id}` deletes a user, `POST /api/users/{id}/restore` undoes it.
@@ -238,22 +271,22 @@ organization. Administrators manage their own organization only; platform admini
 and are the only ones who may grant, revoke, or delete that role. HTTP-level authentication is enforced by the
 endpoint groups; role and tenant checks live in the Application layer so they hold for any caller of a use case.
 
-**A role is only ever granted from above.** An administrator can hand out `Member` and nothing else, so the people
-they invite into their organization are instructors and appointing another administrator stays the platform's call.
-Granting a role and managing somebody who holds one are separate questions: an administrator may still rename or
-remove the fellow administrator they could not have appointed. Both the invitation and `PUT /api/users/{id}` answer
-to this, or inviting a member and promoting them a moment later would be the way around it.
+**A role is only ever granted from above, and only the platform moves anyone between roles.** At invitation time
+an administrator can hand out `Member` and nothing else, so the people they invite into their organization are
+instructors and appointing another administrator stays the platform's call. Editing is stricter still: changing an
+existing person's role is a platform administrator's alone, so an administrator may rename, re-address or remove
+the fellow administrator they could not have appointed, but not demote them. Otherwise inviting a member and
+promoting them a moment later would be the way around the invitation rule.
 
 **Platform administration does not travel to a tenant.** The role belongs to the organization flagged `isPlatform`,
 so granting it anywhere else is a `409` — a clash with where the role lives, not a refusal of the caller, who is
-usually entitled to grant it. Nothing moves a user between organizations, so the invariant only needs stating where
-the role is handed out.
+usually entitled to grant it. Moving a user between organizations resets their role to `Member`, so a move cannot
+carry the role out to a tenant either.
 
-**The role cannot be abandoned by its last holder.** Nobody may delete their own account, only a platform
-administrator may remove another, and deleting the last administrator of any organization is refused outright — so
-a platform administrator giving up the role is the one remaining way to leave the system with nobody able to grant
-it back. That returns `409` unless somebody else already holds it. A deleted administrator does not count as one
-who remains: they cannot sign in, so they could not appoint anybody.
+**Nobody may be the last one out.** An organization cannot be left without an administrator and the platform
+cannot be left without a platform administrator, so deleting, demoting or moving the last one is `409`. All three
+ask `AdministratorCoverage`, because all three take the same person out of the same pool. A deleted administrator
+does not count as one who remains: they cannot sign in, so they could not appoint anybody.
 
 **A platform administrator can only be administered by one.** Editing, deleting, or re-inviting somebody who holds
 the role is reserved for other platform administrators, whether or not the request changes the role itself, so an

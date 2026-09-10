@@ -53,6 +53,25 @@ public static class OrganizationAccess
 	}
 
 	/// <summary>
+	/// Throws unless the caller may change somebody's role at all.
+	/// <para>
+	/// Reserved to platform administrators, which is stricter than <see cref="EnsureCanGrantRole"/> and
+	/// deliberately so: an organization administrator runs the people in their organization, but who is an
+	/// administrator of it is the platform's call. Inviting is the looser of the two — an administrator may invite
+	/// members — because inviting a member creates one rather than moving an existing person between roles.
+	/// </para>
+	/// </summary>
+	public static void EnsureCanChangeRole(IUser user)
+	{
+		if (IsPlatformAdministrator(user))
+		{
+			return;
+		}
+
+		throw new ForbiddenAccessException("Only a platform administrator can change somebody's role.");
+	}
+
+	/// <summary>
 	/// Throws unless the caller may hand the given role to somebody else. Managing a role and granting it are not
 	/// the same thing: an administrator runs their own organization, which includes removing or renaming a fellow
 	/// administrator somebody above them appointed, but not appointing one. So a role is only ever granted from

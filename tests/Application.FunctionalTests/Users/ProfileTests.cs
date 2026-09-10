@@ -92,7 +92,7 @@ internal sealed class ProfileTests : ApiTestBase
 
 		var response = await administrator.PutAsJsonAsync(
 			$"/api/users/{invited.Id}",
-			new UserEndpoints.UpdateUserRequest("Hernoemde Collega", UserRole.Administrator),
+			new UserEndpoints.UpdateUserRequest("Hernoemde Collega", invited.Email, UserRole.Administrator),
 			JsonOptions.Web);
 		var updated = await response.Content.ReadFromJsonAsync<UserDto>(JsonOptions.Web);
 

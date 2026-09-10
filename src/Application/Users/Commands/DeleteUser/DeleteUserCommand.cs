@@ -58,7 +58,11 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
 			throw new ConflictException("A user cannot delete their own account.");
 		}
 
-		await EnsureAnAdministratorRemainsAsync(user, cancellationToken);
+		if (user.Role >= UserRole.Administrator)
+		{
+			await AdministratorCoverage.EnsureAnAdministratorRemainsAsync(
+				_context, user.OrganizationId, user.Id, cancellationToken);
+		}
 
 		var now = _timeProvider.GetUtcNow();
 
@@ -77,36 +81,5 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
 		user.AddDomainEvent(new UserDeletedEvent(user.Id, user.Email, user.Name));
 
 		await _context.SaveChangesAsync(cancellationToken);
-	}
-
-	/// <summary>
-	/// Refuses the deletion that would leave an organization with nobody able to invite or manage anyone in it.
-	/// <para>
-	/// Its members could still sign in and would be stuck: only an administrator can invite, and only an
-	/// administrator can appoint one. Recovering needs a platform administrator, which is a support call rather
-	/// than something the organization can do for itself. The same rule covers the platform organization, and so
-	/// the last platform administrator, who is the one person nobody could appoint a replacement for.
-	/// </para>
-	/// </summary>
-	private async Task EnsureAnAdministratorRemainsAsync(User user, CancellationToken cancellationToken)
-	{
-		if (user.Role < UserRole.Administrator)
-		{
-			return;
-		}
-
-		bool anotherRemains = await _context.Users
-			.AnyAsync(
-				candidate => candidate.Id != user.Id
-					&& candidate.OrganizationId == user.OrganizationId
-					&& candidate.DeletedUtc == null
-					&& candidate.Role >= UserRole.Administrator,
-				cancellationToken);
-
-		if (!anotherRemains)
-		{
-			throw new ConflictException(
-				"The last administrator of an organization cannot be deleted. Appoint another one first.");
-		}
 	}
 }
