@@ -128,23 +128,31 @@ jobs:
           echo "Waiting for $revision"
 
           for attempt in $(seq 1 60); do
-            running=$(az containerapp revision show \
+            # One call, not two. A JMESPath list keeps its order, unlike a multiselect hash, so tsv gives the
+            # two fields in a known order. A transient control-plane blip must not fail a deploy that has
+            # already succeeded, so a failed poll is just an empty reading and the loop tries again.
+            state=$(az containerapp revision show \
               --resource-group "$AZURE_RESOURCE_GROUP" --name "$CONTAINER_APP" --revision "$revision" \
-              --query properties.runningState -o tsv)
-            health=$(az containerapp revision show \
-              --resource-group "$AZURE_RESOURCE_GROUP" --name "$CONTAINER_APP" --revision "$revision" \
-              --query properties.healthState -o tsv)
-            echo "  attempt $attempt: running=$running health=$health"
+              --query "[properties.runningState, properties.healthState]" -o tsv 2>/dev/null) || state=""
+            running=$(printf '%s' "$state" | cut -f1)
+            health=$(printf '%s' "$state" | cut -f2)
+            echo "  attempt $attempt: running=${running:-?} health=${health:-?}"
 
-            if [ "$running" = "Running" ] && [ "$health" = "Healthy" ]; then
-              echo "Revision is healthy."
-              exit 0
-            fi
-
-            if [ "$running" = "Failed" ] || [ "$running" = "Degraded" ]; then
-              echo "::error::Revision $revision entered state $running."
-              break
-            fi
+            # RunningAtMaxScale, not Running, is what an app reports when minReplicas equals maxReplicas -
+            # which is the normal state here. Matching only "Running" polls until it times out on a revision
+            # that came up correctly on the second attempt.
+            case "$running" in
+              Running|RunningAtMaxScale)
+                if [ "$health" = "Healthy" ]; then
+                  echo "Revision is healthy."
+                  exit 0
+                fi
+                ;;
+              Failed|Degraded)
+                echo "::error::Revision $revision entered state $running."
+                break
+                ;;
+            esac
 
             sleep 10
           done
