@@ -20,7 +20,7 @@ namespace Kompaz.Application.FunctionalTests;
 [SetUpFixture]
 internal static class PostgresFixture
 {
-	private const string Image = "postgres:17-alpine";
+	private const string Image = "postgres:16-alpine";
 
 	private static PostgreSqlContainer? _container;
 

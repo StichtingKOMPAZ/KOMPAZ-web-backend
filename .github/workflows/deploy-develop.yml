@@ -1,0 +1,176 @@
+name: Deploy (develop)
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# One deploy at a time. The app migrates the database as it starts and runs a single replica, so overlapping
+# deployments would have two instances racing each other through EF migrations.
+concurrency:
+  group: deploy-develop
+  cancel-in-progress: false
+
+env:
+  AZURE_RESOURCE_GROUP: Kompaz
+  CONTAINER_APP: ca-kompaz-api-develop
+  IDENTITY_NAME: id-kompaz-develop
+  KEY_VAULT_NAME: kv-kompaz-develop
+  REGISTRY: acrphase2.azurecr.io
+  REGISTRY_NAME: acrphase2
+  IMAGE_NAME: kompaz-web-backend
+
+jobs:
+  test:
+    name: Build and test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+          cache: true
+          cache-dependency-path: |
+            global.json
+            nuget.config
+            Directory.Packages.props
+            **/*.csproj
+
+      - name: Restore
+        run: dotnet restore Kompaz.sln --configfile nuget.config
+
+      - name: Build
+        run: dotnet build Kompaz.sln --configuration Release --no-restore
+
+      # The functional tests start their own PostgreSQL container, which the hosted runner's Docker provides.
+      - name: Test
+        run: dotnet test Kompaz.sln --configuration Release --no-build
+
+  deploy:
+    name: Deploy to develop
+    needs: test
+    runs-on: ubuntu-latest
+    environment: develop
+
+    permissions:
+      # Required for the federated credential exchange. There is no client secret.
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Azure login
+        uses: azure/login@v2
+        with:
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Registry login
+        run: az acr login --name ${{ env.REGISTRY_NAME }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: src/Presentation/Dockerfile
+          push: true
+          # Deployed by immutable SHA, which is what makes a rollback a redeploy of the previous tag rather than a
+          # rebuild. The moving tag is for humans reading `docker images`, never for the deployment itself.
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:develop
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Resolve foundation resources
+        id: foundation
+        run: |
+          identity_id=$(az identity show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$IDENTITY_NAME" \
+            --query id -o tsv)
+          vault_uri=$(az keyvault show \
+            --name "$KEY_VAULT_NAME" \
+            --query properties.vaultUri -o tsv)
+          echo "identity_id=$identity_id" >> "$GITHUB_OUTPUT"
+          echo "vault_uri=$vault_uri" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy
+        run: |
+          az deployment group create \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "kompaz-app-${{ github.run_number }}" \
+            --template-file infra/app.bicep \
+            --parameters \
+              image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}" \
+              identityResourceId="${{ steps.foundation.outputs.identity_id }}" \
+              keyVaultUri="${{ steps.foundation.outputs.vault_uri }}" \
+            --output none
+
+      # ARM reports success once the revision is provisioned, which is before the container has migrated the
+      # database and answered a health probe. Without this a broken deploy looks green.
+      - name: Wait for the new revision to become healthy
+        run: |
+          revision=$(az containerapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$CONTAINER_APP" \
+            --query properties.latestRevisionName -o tsv)
+          echo "Waiting for $revision"
+
+          for attempt in $(seq 1 60); do
+            running=$(az containerapp revision show \
+              --resource-group "$AZURE_RESOURCE_GROUP" --name "$CONTAINER_APP" --revision "$revision" \
+              --query properties.runningState -o tsv)
+            health=$(az containerapp revision show \
+              --resource-group "$AZURE_RESOURCE_GROUP" --name "$CONTAINER_APP" --revision "$revision" \
+              --query properties.healthState -o tsv)
+            echo "  attempt $attempt: running=$running health=$health"
+
+            if [ "$running" = "Running" ] && [ "$health" = "Healthy" ]; then
+              echo "Revision is healthy."
+              exit 0
+            fi
+
+            if [ "$running" = "Failed" ] || [ "$running" = "Degraded" ]; then
+              echo "::error::Revision $revision entered state $running."
+              break
+            fi
+
+            sleep 10
+          done
+
+          echo "::error::Revision $revision did not become healthy."
+          echo "--- recent container logs ---"
+          az containerapp logs show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$CONTAINER_APP" \
+            --revision "$revision" \
+            --type console \
+            --tail 100 || true
+          exit 1
+
+      - name: Report
+        run: |
+          fqdn=$(az containerapp show \
+            --resource-group "$AZURE_RESOURCE_GROUP" \
+            --name "$CONTAINER_APP" \
+            --query properties.configuration.ingress.fqdn -o tsv)
+          {
+            echo "### Deployed to develop"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Image | \`${{ env.IMAGE_NAME }}:${{ github.sha }}\` |"
+            echo "| Origin | https://$fqdn |"
+            echo "| Public | https://develop.kompaz.igne.link |"
+          } >> "$GITHUB_STEP_SUMMARY"

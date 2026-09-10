@@ -11,6 +11,9 @@ WORKDIR /src
 COPY ./src/*/*.*proj ./
 RUN for file in $(ls *.*proj); do mkdir -p ./src/${file%.*}/ && mv $file ./src/${file%.*}/; done
 COPY ["Directory.Build.props", "Directory.Build.props"]
+# Versions live here, not on the PackageReference items. Without it every reference restores as versionless and
+# the whole restore fails with NU1015.
+COPY ["Directory.Packages.props", "Directory.Packages.props"]
 COPY ["nuget.ci.config", "nuget.config"]
 RUN dotnet restore "./src/Presentation/Presentation.csproj"
 COPY . .

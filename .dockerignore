@@ -15,3 +15,5 @@ nuget.config
 **/.dockerignore
 **/*.user
 **/*.local
+infra
+scripts

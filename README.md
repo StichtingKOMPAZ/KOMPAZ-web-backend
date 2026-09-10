@@ -324,6 +324,24 @@ own on it. Nothing needs to be running beforehand, and `docker compose up` is no
 Release builds run StyleCop, Sonar, and the .NET analyzers with warnings as errors, so a clean Release build is the
 quality gate. CI runs restore, build, and test on every push and pull request.
 
+## Deployment
+
+The develop environment runs on Azure Container Apps behind the existing `igne-proxy`, and reuses the shared
+PostgreSQL server and container registry already in the subscription rather than provisioning its own. Roughly
+EUR 13 a month, almost all of it the always-warm replica.
+
+```powershell
+./scripts/bootstrap-azure.ps1 -MailtrapUserName <user> -MailtrapPassword <password>
+```
+
+Infrastructure is Bicep in `infra/`, split into a `foundation` stage that creates the identity and key vault and an
+`app` stage that references the secrets by URI without ever carrying a value. `.github/workflows/deploy-develop.yml`
+redeploys the app stage on every push to `main`, gated behind the tests.
+
+Two things a deployment must get right are written up in [docs/deployment.md](docs/deployment.md): the
+`ForwardedHeaders:ForwardLimit` measurement, which the rate limiter depends on, and the connection pool cap, which
+the five other projects sharing that database server depend on.
+
 ## Project hygiene
 
 - Package versions are centralized in `Directory.Packages.props`, including a few transitive pins that lift
