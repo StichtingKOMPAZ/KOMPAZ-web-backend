@@ -128,14 +128,15 @@ jobs:
           echo "Waiting for $revision"
 
           for attempt in $(seq 1 60); do
-            # One call, not two. A JMESPath list keeps its order, unlike a multiselect hash, so tsv gives the
-            # two fields in a known order. A transient control-plane blip must not fail a deploy that has
-            # already succeeded, so a failed poll is just an empty reading and the loop tries again.
+            # One call, not two. A JMESPath list keeps its order, and `-o tsv` prints each element on its own
+            # LINE - not tab-separated, whatever the format's name suggests - so the fields are read by line
+            # number. A transient control-plane blip must not fail a deploy that has already succeeded, so a
+            # failed poll is just an empty reading and the loop tries again.
             state=$(az containerapp revision show \
               --resource-group "$AZURE_RESOURCE_GROUP" --name "$CONTAINER_APP" --revision "$revision" \
-              --query "[properties.runningState, properties.healthState]" -o tsv 2>/dev/null) || state=""
-            running=$(printf '%s' "$state" | cut -f1)
-            health=$(printf '%s' "$state" | cut -f2)
+              --query "[properties.runningState, properties.healthState]" -o tsv 2>/dev/null | tr -d '\r') || state=""
+            running=$(printf '%s\n' "$state" | sed -n 1p)
+            health=$(printf '%s\n' "$state" | sed -n 2p)
             echo "  attempt $attempt: running=${running:-?} health=${health:-?}"
 
             # RunningAtMaxScale, not Running, is what an app reports when minReplicas equals maxReplicas -
