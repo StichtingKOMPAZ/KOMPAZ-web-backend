@@ -171,7 +171,8 @@ internal sealed class OrganizationTests : ApiTestBase
 
 	/// <summary>
 	/// The accounts go with the organization, so the people who had them are told the same thing they would be
-	/// told if an administrator had deleted them one at a time.
+	/// told if an administrator had deleted them one at a time — and, for the same reason, somebody who never
+	/// accepted their invitation is told nothing, because they had no account to lose.
 	/// </summary>
 	[Test]
 	public async Task DeletingAnOrganizationTellsItsUsersTheirAccountIsGone()
@@ -179,13 +180,15 @@ internal sealed class OrganizationTests : ApiTestBase
 		var client = await SignInAsPlatformAdministratorAsync();
 		var created = await client.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
 		var organization = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
-		await InviteAsync(client, "klant@kompaz.local", "Klant Lid", UserRole.Member, organization!.Id);
-		await InviteAsync(client, "tweede@kompaz.local", "Tweede Lid", UserRole.Member, organization.Id);
+		await InviteAndSignInAsync(client, "klant@kompaz.local", "Klant Lid", UserRole.Member, organization!.Id);
+		await InviteAndSignInAsync(client, "tweede@kompaz.local", "Tweede Lid", UserRole.Member, organization.Id);
+		await InviteAsync(client, "nooit@kompaz.local", "Nooit Geaccepteerd", UserRole.Member, organization.Id);
 
 		await client.DeleteAsync($"/api/organizations/{organization.Id}");
 
 		Emails.ToldAboutDeletion("klant@kompaz.local").Should().BeTrue();
 		Emails.ToldAboutDeletion("tweede@kompaz.local").Should().BeTrue();
+		Emails.ToldAboutDeletion("nooit@kompaz.local").Should().BeFalse();
 		Emails.ToldAboutDeletion(SeededAdministratorEmail).Should().BeFalse();
 	}
 
@@ -199,7 +202,7 @@ internal sealed class OrganizationTests : ApiTestBase
 		var client = await SignInAsPlatformAdministratorAsync();
 		var created = await client.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
 		var organization = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
-		await InviteAsync(client, "klant@kompaz.local", "Klant Lid", UserRole.Member, organization!.Id);
+		await InviteAndSignInAsync(client, "klant@kompaz.local", "Klant Lid", UserRole.Member, organization!.Id);
 
 		Emails.DeliveryFails = true;
 		var deleted = await client.DeleteAsync($"/api/organizations/{organization.Id}");

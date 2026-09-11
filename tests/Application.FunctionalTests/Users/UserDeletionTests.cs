@@ -59,11 +59,29 @@ internal sealed class UserDeletionTests : ApiTestBase
 	public async Task ADeletedUserIsToldByEmail()
 	{
 		var administrator = await SignInAsPlatformAdministratorAsync();
-		var member = await InviteAsync(administrator, MemberEmail, MemberName);
+		await InviteAndSignInAsync(administrator, MemberEmail, MemberName, UserRole.Member);
+		var member = await FindAsync(administrator, MemberEmail);
 
 		await administrator.DeleteAsync($"/api/users/{member.Id}");
 
 		Emails.ToldAboutDeletion(MemberEmail).Should().BeTrue();
+	}
+
+	/// <summary>
+	/// Revoking an invitation is silent. The notice says the account is deleted and that they can no longer log
+	/// in, and for somebody who never accepted, every line of that is untrue — they have no account and never
+	/// had a way in. What they lose is a link, which simply stops working.
+	/// </summary>
+	[Test]
+	public async Task RevokingAnInvitationTellsTheInviteeNothing()
+	{
+		var administrator = await SignInAsPlatformAdministratorAsync();
+		var invited = await InviteAsync(administrator, MemberEmail, MemberName);
+
+		var deleted = await administrator.DeleteAsync($"/api/users/{invited.Id}");
+
+		deleted.StatusCode.Should().Be(HttpStatusCode.NoContent);
+		Emails.ToldAboutDeletion(MemberEmail).Should().BeFalse();
 	}
 
 	/// <summary>
@@ -96,11 +114,14 @@ internal sealed class UserDeletionTests : ApiTestBase
 		var member = await InviteAsync(administrator, MemberEmail, MemberName);
 		await administrator.DeleteAsync($"/api/users/{member.Id}");
 
+		// Counted rather than asked whether anything was ever sent: the invitation above went to this address, so
+		// the question is whether the request after the deletion adds to that.
+		int before = Emails.LinksSentTo(MemberEmail);
 		var response = await CreateClient().PostAsJsonAsync(
 			"/api/auth/magic-link", new { email = MemberEmail }, JsonOptions.Web);
 
 		response.StatusCode.Should().Be(HttpStatusCode.Accepted);
-		Emails.WasSentTo(MemberEmail).Should().BeFalse();
+		Emails.LinksSentTo(MemberEmail).Should().Be(before);
 	}
 
 	[Test]

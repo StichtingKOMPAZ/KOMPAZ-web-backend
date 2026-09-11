@@ -65,12 +65,16 @@ public class DeleteOrganizationCommandHandler : IRequestHandler<DeleteOrganizati
 		}
 
 		// Read before the delete, because after it there is nobody left to ask. Only the addresses and names are
-		// read: what the notice needs, rather than rows that are about to stop existing. Users already deleted are
-		// left out — they were told when it happened, and telling them again would be news about an account they
-		// no longer have.
+		// read: what the notice needs, rather than rows that are about to stop existing.
+		//
+		// Active users only, and the same two exclusions DeleteUserCommand makes. Somebody already deleted was
+		// told when it happened; somebody still invited never had the account this notice is about, and telling
+		// them it is gone would be the first they had heard of it.
 		var members = await _context.Users
 			.AsNoTracking()
-			.Where(user => user.OrganizationId == request.Id && user.DeletedUtc == null)
+			.Where(user => user.OrganizationId == request.Id
+				&& user.DeletedUtc == null
+				&& user.Status == UserStatus.Active)
 			.Select(user => new { user.Id, user.Email, user.Name })
 			.ToListAsync(cancellationToken);
 

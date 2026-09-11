@@ -1,4 +1,4 @@
-﻿using FluentAssertions;
+using FluentAssertions;
 using Kompaz.Application.Common.Models;
 using Kompaz.Application.Organizations;
 using Kompaz.Application.Organizations.Commands.CreateOrganization;
@@ -118,6 +118,28 @@ internal sealed class UserQueryTests : ApiTestBase
 		everyone!.TotalCount.Should().Be(2);
 		scoped!.TotalCount.Should().Be(1);
 		scoped.Items.Should().ContainSingle(user => user.Email == "klant@kompaz.local");
+	}
+
+	/// <summary>
+	/// The active tab shows four columns and no status badge, so every one of them has to come back on the row
+	/// rather than being fetched per user. The organization is a name, not an identifier: a table that had to
+	/// resolve one call per row is the thing this projection exists to avoid.
+	/// </summary>
+	[Test]
+	public async Task TheActiveListCarriesEveryColumnTheTableShows()
+	{
+		var platformAdministrator = await SignInAsPlatformAdministratorAsync();
+		var created = await platformAdministrator.PostAsJsonAsync("/api/organizations", new CreateOrganizationCommand("Klant B.V."), JsonOptions.Web);
+		var tenant = await created.Content.ReadFromJsonAsync<OrganizationDto>(JsonOptions.Web);
+		await InviteAndSignInAsync(platformAdministrator, "klant@kompaz.local", "Klant Beheerder", UserRole.Administrator, tenant!.Id);
+
+		var active = await platformAdministrator.GetFromJsonAsync<PaginatedList<UserDto>>($"/api/users?status={UserStatus.Active}", JsonOptions.Web);
+		var row = active!.Items.Should().ContainSingle(user => user.Email == "klant@kompaz.local").Subject;
+
+		row.Name.Should().Be("Klant Beheerder");
+		row.OrganizationName.Should().Be("Klant B.V.");
+		row.Role.Should().Be(UserRole.Administrator);
+		row.Status.Should().Be(UserStatus.Active);
 	}
 
 	/// <summary>

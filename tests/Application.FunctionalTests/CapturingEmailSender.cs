@@ -10,6 +10,7 @@ namespace Kompaz.Application.FunctionalTests;
 internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 {
 	private readonly ConcurrentDictionary<string, string> _tokensByEmail = new(StringComparer.OrdinalIgnoreCase);
+	private readonly ConcurrentDictionary<string, int> _linksByEmail = new(StringComparer.OrdinalIgnoreCase);
 	private readonly ConcurrentBag<string> _accountDeletedNotices = [];
 
 	/// <summary>
@@ -25,13 +26,13 @@ internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 			throw new InvalidOperationException("The relay refused the message.");
 		}
 
-		_tokensByEmail[email] = token;
+		Record(email, token);
 		return Task.CompletedTask;
 	}
 
 	public Task SendInvitationAsync(string email, string name, string organizationName, string token, CancellationToken cancellationToken = default)
 	{
-		_tokensByEmail[email] = token;
+		Record(email, token);
 		return Task.CompletedTask;
 	}
 
@@ -43,10 +44,6 @@ internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 		}
 
 		_accountDeletedNotices.Add(email);
-
-		// A deleted user has no live link any more, and leaving the last one readable would let a test follow a
-		// link that the deletion was supposed to have taken away.
-		_tokensByEmail.TryRemove(email, out _);
 
 		return Task.CompletedTask;
 	}
@@ -66,4 +63,20 @@ internal sealed class CapturingEmailSender : IAuthenticationEmailSender
 			: throw new InvalidOperationException($"No sign-in link was sent to {email}.");
 
 	public bool WasSentTo(string email) => _tokensByEmail.ContainsKey(email);
+
+	/// <summary>
+	/// How many links have been sent to an address.
+	/// <para>
+	/// A count rather than a flag, because the question most tests actually have is whether sending a link was
+	/// refused <em>this time</em> — and an address that was invited before has been sent one either way. Asking
+	/// "was anything ever sent" made one test pass for a reason that had nothing to do with what it was testing.
+	/// </para>
+	/// </summary>
+	public int LinksSentTo(string email) => _linksByEmail.TryGetValue(email, out int count) ? count : 0;
+
+	private void Record(string email, string token)
+	{
+		_tokensByEmail[email] = token;
+		_linksByEmail.AddOrUpdate(email, 1, (_, count) => count + 1);
+	}
 }

@@ -78,7 +78,16 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
 			.ExecuteDeleteAsync(cancellationToken);
 
 		user.Delete(now);
-		user.AddDomainEvent(new UserDeletedEvent(user.Id, user.Email, user.Name));
+
+		// Only somebody who could actually sign in is told their account is gone. The notice says their account is
+		// deleted and that they can no longer log in, and for an invited user every line of that is untrue: they
+		// never had an account and never could log in. What they lose is a link they may not have opened, so
+		// revoking an invitation is silent. The same reasoning runs the other way for a user who was invited again
+		// after being deleted — they were told the first time, and this invitation is not a second account.
+		if (user.Status == UserStatus.Active)
+		{
+			user.AddDomainEvent(new UserDeletedEvent(user.Id, user.Email, user.Name));
+		}
 
 		await _context.SaveChangesAsync(cancellationToken);
 	}

@@ -125,6 +125,11 @@ dotnet ef migrations add Name --project src/Infrastructure --startup-project src
   bearer token the caller attaches deliberately, never by a cookie a browser attaches on its own, so there is no
   cross-site request to forge: the logo upload states `DisableAntiforgery()` rather than the pipeline growing a
   middleware whose token would protect nothing.
+- **A deletion notice goes only to somebody who could sign in.** The account-deleted email says the account is
+  gone and that they can no longer log in. For a user still `Invited` every line of that is untrue — they never
+  had an account — so revoking an invitation is silent, and deleting an organization tells only its active
+  members. `DeleteUserCommand` and `DeleteOrganizationCommand` both state the condition; a third way to remove
+  somebody states it too, or it emails a stranger about an account they never had.
 - **Windows reserves high ports.** The compose database is published on 5433 because 54321 falls in a range Windows
   refuses to bind.
 
