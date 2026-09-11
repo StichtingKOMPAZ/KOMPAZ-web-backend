@@ -1,4 +1,4 @@
-﻿using Kompaz.Application.Authentication;
+using Kompaz.Application.Authentication;
 using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
@@ -122,7 +122,8 @@ public class InviteUserCommandHandler : IRequestHandler<InviteUserCommand, UserD
 
 		if (clashes)
 		{
-			throw new ConflictException($"A user with the email address \"{request.Email.Trim()}\" already exists.");
+			throw new ConflictException(
+				$"Er bestaat al een gebruiker met het e-mailadres \"{request.Email.Trim()}\".");
 		}
 
 		OrganizationAccess.EnsureCanManageRole(_currentUser, existing.Role);

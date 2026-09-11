@@ -137,8 +137,10 @@ $foundation = $foundationJson | ConvertFrom-Json
 
 $identityResourceId = $foundation.identityResourceId.value
 $keyVaultUri = $foundation.keyVaultUri.value
+$storageAccount = $foundation.storageAccountName.value
 Write-Host "  identity     $identityResourceId"
 Write-Host "  vault        $keyVaultUri"
+Write-Host "  storage      $storageAccount"
 
 # The container app authenticates to the registry with admin credentials rather than the managed identity.
 # Granting AcrPull would need Microsoft.Authorization/roleAssignments/write for that role, and the Owner role on
@@ -294,6 +296,13 @@ Set-Secret $KeyVaultName 'kompazdb-connection-string' $connectionString
 $null = Get-OrSetSecret $KeyVaultName 'authentication-signing-key' { New-SigningKey }
 Set-Secret $KeyVaultName 'smtp-username' $MailtrapUserName
 Set-Secret $KeyVaultName 'smtp-password' $MailtrapPassword
+
+# Asked for here rather than emitted by the deployment: a template output is readable in the deployment history by
+# anybody with Reader on the resource group, so an account key must not travel that way. Derived from the account
+# the foundation just created, which also means rotating the key is this script again and nothing else.
+$storageConnectionString = az storage account show-connection-string --name $storageAccount --resource-group $ResourceGroup --query connectionString -o tsv
+if ($LASTEXITCODE -ne 0) { throw "Could not read the connection string for storage account $storageAccount." }
+Set-Secret $KeyVaultName 'storage-connection-string' $storageConnectionString
 
 if (-not $SkipGitHubOidc) {
     Write-Step "GitHub OIDC"

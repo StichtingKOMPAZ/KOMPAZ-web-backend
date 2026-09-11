@@ -35,7 +35,7 @@ public static class AdministratorCoverage
 		if (!anotherRemains)
 		{
 			throw new ConflictException(
-				"An organization cannot be left without an administrator. Appoint another one first.");
+				"Een organisatie kan niet zonder beheerder achterblijven. Wijs eerst een andere beheerder aan.");
 		}
 	}
 
@@ -58,7 +58,7 @@ public static class AdministratorCoverage
 		if (!anotherRemains)
 		{
 			throw new ConflictException(
-				"The last platform administrator cannot give up the role. Appoint another one first.");
+				"De laatste platformbeheerder kan de rol niet opgeven. Wijs eerst een andere platformbeheerder aan.");
 		}
 	}
 }

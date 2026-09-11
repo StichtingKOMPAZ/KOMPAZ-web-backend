@@ -1,4 +1,4 @@
-﻿using Kompaz.Application.Common.Exceptions;
+using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Domain.Entities;
 using Kompaz.Domain.Enums;
@@ -22,7 +22,7 @@ public static class OrganizationAccess
 			return;
 		}
 
-		throw new ForbiddenAccessException("The current user does not belong to the requested organization.");
+		throw new ForbiddenAccessException("Deze gebruiker hoort niet bij de opgevraagde organisatie.");
 	}
 
 	/// <summary>
@@ -35,7 +35,8 @@ public static class OrganizationAccess
 			return;
 		}
 
-		throw new ForbiddenAccessException("The current user is not an administrator of the requested organization.");
+		throw new ForbiddenAccessException(
+			"Deze gebruiker is geen beheerder van de opgevraagde organisatie.");
 	}
 
 	/// <summary>
@@ -49,7 +50,8 @@ public static class OrganizationAccess
 			return;
 		}
 
-		throw new ForbiddenAccessException("Only a platform administrator can manage the platform administrator role.");
+		throw new ForbiddenAccessException(
+			"Alleen een platformbeheerder kan de rol platformbeheerder beheren.");
 	}
 
 	/// <summary>
@@ -68,7 +70,7 @@ public static class OrganizationAccess
 			return;
 		}
 
-		throw new ForbiddenAccessException("Only a platform administrator can change somebody's role.");
+		throw new ForbiddenAccessException("Alleen een platformbeheerder kan de rol van iemand wijzigen.");
 	}
 
 	/// <summary>
@@ -87,7 +89,7 @@ public static class OrganizationAccess
 			return;
 		}
 
-		throw new ForbiddenAccessException("The current user can only grant a role below their own.");
+		throw new ForbiddenAccessException("Deze gebruiker kan alleen een lagere rol dan de eigen rol toekennen.");
 	}
 
 	/// <summary>
@@ -102,7 +104,7 @@ public static class OrganizationAccess
 		}
 
 		throw new ConflictException(
-			$"A platform administrator belongs to the organization that runs the platform, not to \"{organization.Name}\".");
+			$"Een platformbeheerder hoort bij de organisatie die het platform beheert, niet bij \"{organization.Name}\".");
 	}
 
 	/// <summary>
@@ -116,6 +118,6 @@ public static class OrganizationAccess
 		}
 
 		return user.OrganizationId
-			?? throw new ForbiddenAccessException("The current user is not attached to an organization.");
+			?? throw new ForbiddenAccessException("Deze gebruiker is niet aan een organisatie gekoppeld.");
 	}
 }

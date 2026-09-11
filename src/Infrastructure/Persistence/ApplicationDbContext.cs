@@ -15,6 +15,8 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 
 	public DbSet<Organization> Organizations => Set<Organization>();
 
+	public DbSet<OrganizationLogo> OrganizationLogos => Set<OrganizationLogo>();
+
 	public DbSet<User> Users => Set<User>();
 
 	public DbSet<LoginToken> LoginTokens => Set<LoginToken>();
@@ -38,7 +40,7 @@ public class ApplicationDbContext : DbContext, IApplicationDbContext
 		}
 		catch (DbUpdateException exception) when (UniqueConstraint.WasViolated(exception))
 		{
-			throw new ConflictException("The request conflicts with a value that already exists.", exception);
+			throw new ConflictException("Dit verzoek gaat niet samen met een waarde die al bestaat.", exception);
 		}
 	}
 

@@ -2,7 +2,6 @@ using FluentAssertions;
 using Kompaz.Infrastructure;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using NUnit.Framework;
 
@@ -44,6 +43,11 @@ internal sealed class EmailConfigurationTests
 		register.Should().NotThrow();
 	}
 
+	/// <summary>
+	/// Production with a relay configured. The blob account is configured alongside it because this is about the
+	/// email rule: the storage rule refuses Production too, and leaving it out would have this test passing or
+	/// failing for the wrong reason.
+	/// </summary>
 	[Test]
 	public void AConfiguredRelayIsAcceptedAnywhere()
 	{
@@ -53,6 +57,7 @@ internal sealed class EmailConfigurationTests
 				["Email:Smtp:Host"] = "smtp.example.com",
 				["Email:Smtp:UserName"] = "kompaz",
 				["Email:Smtp:Password"] = "secret",
+				["Storage:ConnectionString"] = StorageConfigurationTests.ConnectionString,
 			})
 			.Build();
 
@@ -65,17 +70,5 @@ internal sealed class EmailConfigurationTests
 	private static IConfiguration ConfigurationWithoutSmtp() =>
 		new ConfigurationBuilder().Build();
 
-	private static StubHostEnvironment EnvironmentNamed(string name) =>
-		new StubHostEnvironment { EnvironmentName = name };
-
-	private sealed class StubHostEnvironment : IHostEnvironment
-	{
-		public string EnvironmentName { get; set; } = Environments.Production;
-
-		public string ApplicationName { get; set; } = "Kompaz.Tests";
-
-		public string ContentRootPath { get; set; } = AppContext.BaseDirectory;
-
-		public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
-	}
+	private static StubHostEnvironment EnvironmentNamed(string name) => StubHostEnvironment.Named(name);
 }

@@ -61,7 +61,7 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 			.Include(token => token.User)
 				.ThenInclude(user => user.Organization)
 			.SingleOrDefaultAsync(token => token.TokenHash == tokenHash, cancellationToken)
-			?? throw new AuthenticationFailedException("The refresh token is not valid.");
+			?? throw new AuthenticationFailedException("Dit vernieuwingstoken is niet geldig.");
 
 		if (stored.IsSpent)
 		{
@@ -70,7 +70,7 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 
 		if (!stored.IsRedeemable(now))
 		{
-			throw new AuthenticationFailedException("The refresh token has expired.");
+			throw new AuthenticationFailedException("Dit vernieuwingstoken is verlopen.");
 		}
 
 		// The checks above cannot settle it on their own: concurrent requests carrying the same secret would both pass
@@ -132,7 +132,8 @@ public class RefreshAccessTokenCommandHandler : IRequestHandler<RefreshAccessTok
 			stored.UserId,
 			stored.SessionId);
 
-		return new AuthenticationFailedException("The refresh token has already been used. The session has been ended.");
+		return new AuthenticationFailedException(
+			"Dit vernieuwingstoken is al gebruikt. De sessie is beëindigd.");
 	}
 
 	/// <summary>

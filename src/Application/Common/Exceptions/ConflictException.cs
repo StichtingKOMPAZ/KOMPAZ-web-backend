@@ -16,7 +16,7 @@ public class ConflictException : Exception
 	}
 
 	public ConflictException()
-		: base("The request conflicts with the current state of the resource.")
+		: base("Dit verzoek gaat niet samen met de huidige situatie.")
 	{
 	}
 }

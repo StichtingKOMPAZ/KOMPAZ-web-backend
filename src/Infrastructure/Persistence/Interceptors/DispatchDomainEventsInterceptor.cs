@@ -14,14 +14,46 @@ namespace Kompaz.Infrastructure.Persistence.Interceptors;
 /// commands that raise these events are safe to repeat: re-inviting somebody who has not accepted sends the link
 /// again rather than refusing the address.
 /// </para>
+/// <para>
+/// <strong>Collected before the save, published after it.</strong> Which entities raised something is noted while
+/// they are all still tracked, because saving a deletion detaches the row that was deleted: an entity asked for
+/// its events afterwards would no longer be there to ask, and the notices a deletion raises — telling the people
+/// in a removed organization that their accounts are gone — would be dropped without a word. The events
+/// themselves are read and cleared at publishing time, so a save that throws leaves them attached for the retry
+/// rather than swallowing them.
+/// </para>
 /// </summary>
 internal sealed class DispatchDomainEventsInterceptor : SaveChangesInterceptor
 {
 	private readonly IPublisher _publisher;
 
+	/// <summary>
+	/// The entities noted by the save currently in flight. Safe as a field because this interceptor is scoped
+	/// alongside the context it serves, and because the list is replaced at the start of every save and emptied by
+	/// the end of it — so a second save cannot find the first one's entries.
+	/// </summary>
+	private List<Entity> _raisedBy = [];
+
 	public DispatchDomainEventsInterceptor(IPublisher publisher)
 	{
 		_publisher = publisher;
+	}
+
+	public override InterceptionResult<int> SavingChanges(DbContextEventData eventData, InterceptionResult<int> result)
+	{
+		_raisedBy = Collect(eventData.Context);
+
+		return base.SavingChanges(eventData, result);
+	}
+
+	public override ValueTask<InterceptionResult<int>> SavingChangesAsync(
+		DbContextEventData eventData,
+		InterceptionResult<int> result,
+		CancellationToken cancellationToken = default)
+	{
+		_raisedBy = Collect(eventData.Context);
+
+		return base.SavingChangesAsync(eventData, result, cancellationToken);
 	}
 
 	public override async ValueTask<int> SavedChangesAsync(
@@ -29,29 +61,49 @@ internal sealed class DispatchDomainEventsInterceptor : SaveChangesInterceptor
 		int result,
 		CancellationToken cancellationToken = default)
 	{
-		await PublishAsync(eventData.Context, cancellationToken);
+		await PublishAsync(cancellationToken);
 
 		return await base.SavedChangesAsync(eventData, result, cancellationToken);
 	}
 
 	public override int SavedChanges(SaveChangesCompletedEventData eventData, int result)
 	{
-		PublishAsync(eventData.Context, CancellationToken.None).GetAwaiter().GetResult();
+		PublishAsync(CancellationToken.None).GetAwaiter().GetResult();
 
 		return base.SavedChanges(eventData, result);
 	}
 
-	private async Task PublishAsync(DbContext? context, CancellationToken cancellationToken)
+	/// <summary>
+	/// Forgets what the failed save had noted. The events stay on their entities, so the next attempt collects
+	/// them again; keeping the list would instead publish them on the back of some later, unrelated save.
+	/// </summary>
+	public override void SaveChangesFailed(DbContextErrorEventData eventData)
 	{
-		if (context is null)
-		{
-			return;
-		}
+		_raisedBy = [];
 
-		var raised = context.ChangeTracker.Entries<Entity>()
-			.Select(entry => entry.Entity)
-			.Where(entity => entity.DomainEvents.Count > 0)
-			.ToList();
+		base.SaveChangesFailed(eventData);
+	}
+
+	public override Task SaveChangesFailedAsync(
+		DbContextErrorEventData eventData,
+		CancellationToken cancellationToken = default)
+	{
+		_raisedBy = [];
+
+		return base.SaveChangesFailedAsync(eventData, cancellationToken);
+	}
+
+	private static List<Entity> Collect(DbContext? context) =>
+		context is null
+			? []
+			: [.. context.ChangeTracker.Entries<Entity>()
+				.Select(entry => entry.Entity)
+				.Where(entity => entity.DomainEvents.Count > 0)];
+
+	private async Task PublishAsync(CancellationToken cancellationToken)
+	{
+		var raised = _raisedBy;
+		_raisedBy = [];
 
 		if (raised.Count == 0)
 		{

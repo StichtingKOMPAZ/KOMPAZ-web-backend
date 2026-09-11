@@ -57,12 +57,12 @@ public sealed class AccountStatusBehaviour<TRequest, TResponse> : IPipelineBehav
 			.Where(user => user.Id == userId && user.DeletedUtc == null)
 			.Select(user => new { user.Role, user.OrganizationId })
 			.SingleOrDefaultAsync(cancellationToken)
-			?? throw new AuthenticationFailedException("The account behind this token no longer exists.");
+			?? throw new AuthenticationFailedException("Het account achter dit token bestaat niet meer.");
 
 		if (_user.Role != account.Role || _user.OrganizationId != account.OrganizationId)
 		{
 			throw new AuthenticationFailedException(
-				"This token was issued for a role or organization the account no longer has.");
+				"Dit token is uitgegeven voor een rol of organisatie die het account niet meer heeft.");
 		}
 
 		return await next();

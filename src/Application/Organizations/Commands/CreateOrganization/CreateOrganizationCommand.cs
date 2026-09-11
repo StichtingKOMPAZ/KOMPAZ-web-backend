@@ -8,6 +8,12 @@ namespace Kompaz.Application.Organizations.Commands.CreateOrganization;
 
 /// <summary>
 /// Creates a new tenant. Reserved for platform administrators.
+/// <para>
+/// The logo is not part of this: it is a sub-resource of the organization that does not exist yet, uploaded with
+/// <c>PUT /api/organizations/{id}/logo</c> once it does. A client that offers both in one dialog makes the two
+/// calls in turn, and an upload that fails leaves an organization shown with the placeholder rather than no
+/// organization at all.
+/// </para>
 /// </summary>
 [Authorize(MinimumRole = UserRole.PlatformAdministrator)]
 public record CreateOrganizationCommand(string Name) : IRequest<OrganizationDto>;
@@ -18,7 +24,9 @@ public class CreateOrganizationCommandValidator : AbstractValidator<CreateOrgani
 	{
 		RuleFor(command => command.Name)
 			.NotEmpty()
-			.MaximumLength(200);
+			.WithMessage(OrganizationMessages.NameRequired)
+			.MaximumLength(Organization.MaximumNameLength)
+			.WithMessage($"De organisatienaam mag maximaal {Organization.MaximumNameLength} tekens bevatten.");
 	}
 }
 
@@ -33,14 +41,16 @@ public class CreateOrganizationCommandHandler : IRequestHandler<CreateOrganizati
 
 	public async Task<OrganizationDto> Handle(CreateOrganizationCommand request, CancellationToken cancellationToken)
 	{
-		string name = request.Name.Trim();
+		var entity = Organization.Create(request.Name);
 
-		if (await _context.Organizations.AnyAsync(organization => organization.Name == name, cancellationToken))
+		// Compared folded, and matched by the folded unique index behind it, so "Elkerliek" and "elkerliek" are
+		// the same name rather than two organizations a person cannot tell apart. Losing the race between this
+		// check and the insert still ends in a 409, from the index.
+		if (await _context.Organizations.AnyAsync(
+			organization => organization.NormalizedName == entity.NormalizedName, cancellationToken))
 		{
-			throw new ConflictException($"An organization named \"{name}\" already exists.");
+			throw new ConflictException(OrganizationMessages.NameTaken);
 		}
-
-		var entity = new Organization { Name = name };
 
 		_context.Organizations.Add(entity);
 		await _context.SaveChangesAsync(cancellationToken);

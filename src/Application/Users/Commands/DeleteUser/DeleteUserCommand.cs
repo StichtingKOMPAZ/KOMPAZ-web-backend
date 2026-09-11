@@ -55,7 +55,7 @@ public class DeleteUserCommandHandler : IRequestHandler<DeleteUserCommand>
 
 		if (_currentUser.Id == user.Id)
 		{
-			throw new ConflictException("A user cannot delete their own account.");
+			throw new ConflictException("Een gebruiker kan het eigen account niet verwijderen.");
 		}
 
 		if (user.Role >= UserRole.Administrator)

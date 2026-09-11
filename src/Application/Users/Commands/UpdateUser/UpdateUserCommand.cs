@@ -109,7 +109,7 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 		if (requestedRole is { } role && role != UserRole.Member)
 		{
 			throw new ConflictException(
-				$"Moving a user resets their role to {UserRole.Member}. Grant a higher role after the move.");
+				$"Een gebruiker verplaatsen zet de rol terug naar {UserRole.Member}. Ken een hogere rol toe na de verplaatsing.");
 		}
 
 		var organization = await _context.Organizations
@@ -182,7 +182,8 @@ public class UpdateUserCommandHandler : IRequestHandler<UpdateUserCommand, UserD
 
 		if (taken)
 		{
-			throw new ConflictException($"A user with the email address \"{email.Trim()}\" already exists.");
+			throw new ConflictException(
+				$"Er bestaat al een gebruiker met het e-mailadres \"{email.Trim()}\".");
 		}
 
 		// Any link outstanding for this account was emailed to the address they are leaving, and would sign

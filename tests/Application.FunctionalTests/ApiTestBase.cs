@@ -29,6 +29,11 @@ internal abstract class ApiTestBase : IDisposable
 	protected CapturingEmailSender Emails => _factory.Emails;
 
 	/// <summary>
+	/// The file store the application under test keeps uploads in.
+	/// </summary>
+	protected CapturingFileStore Files => _factory.Files;
+
+	/// <summary>
 	/// The clock the application under test runs on. Advance it to reach behaviour that is days away.
 	/// </summary>
 	protected FakeTimeProvider Clock => _factory.Clock;

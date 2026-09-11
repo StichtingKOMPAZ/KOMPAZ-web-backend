@@ -42,7 +42,7 @@ public class UpdateOwnProfileCommandHandler : IRequestHandler<UpdateOwnProfileCo
 
 		var user = await _context.Users
 			.SingleOrDefaultAsync(candidate => candidate.Id == userId && candidate.DeletedUtc == null, cancellationToken)
-			?? throw new AuthenticationFailedException("The authenticated user no longer exists.");
+			?? throw new AuthenticationFailedException("Deze gebruiker bestaat niet meer.");
 
 		user.Rename(request.Name);
 		await _context.SaveChangesAsync(cancellationToken);

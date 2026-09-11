@@ -196,8 +196,10 @@ FOUNDATION="$(az deployment group create \
 
 IDENTITY_RESOURCE_ID="$(printf '%s' "$FOUNDATION" | python -c 'import json,sys; print(json.load(sys.stdin)["identityResourceId"]["value"])')"
 KEY_VAULT_URI="$(printf '%s' "$FOUNDATION" | python -c 'import json,sys; print(json.load(sys.stdin)["keyVaultUri"]["value"])')"
+STORAGE_ACCOUNT="$(printf '%s' "$FOUNDATION" | python -c 'import json,sys; print(json.load(sys.stdin)["storageAccountName"]["value"])')"
 echo "  identity     $IDENTITY_RESOURCE_ID"
 echo "  vault        $KEY_VAULT_URI"
+echo "  storage      $STORAGE_ACCOUNT"
 
 # The container app authenticates to the registry with admin credentials rather than the managed identity.
 # Granting AcrPull needs Microsoft.Authorization/roleAssignments/write for that role, which the ABAC condition
@@ -300,6 +302,16 @@ get_or_set_secret 'authentication-signing-key' new_signing_key >/dev/null
 set_secret 'smtp-username' "$MAILTRAP_USERNAME"
 set_secret 'smtp-password' "$MAILTRAP_PASSWORD"
 
+# Asked for here rather than emitted by the deployment: a template output is readable in the deployment history by
+# anybody with Reader on the resource group, so an account key must not travel that way. Derived from the account
+# the foundation just created, which also means rotating the key is this script again and nothing else.
+STORAGE_CONNECTION_STRING="$(azv storage account show-connection-string \
+	--name "$STORAGE_ACCOUNT" \
+	--resource-group "$RESOURCE_GROUP" \
+	--query connectionString -o tsv)" \
+	|| die "Could not read the connection string for storage account $STORAGE_ACCOUNT."
+set_secret 'storage-connection-string' "$STORAGE_CONNECTION_STRING"
+
 # ------------------------------------------------------------------------------------------ github oidc
 
 if [[ "$SKIP_GITHUB_OIDC" != "true" ]]; then
@@ -326,8 +338,10 @@ if [[ "$SKIP_GITHUB_OIDC" != "true" ]]; then
 	SUBJECTS=("repo:${GITHUB_REPOSITORY}:ref:refs/heads/main" "repo:${GITHUB_REPOSITORY}:environment:develop")
 
 	if command -v gh >/dev/null && gh auth status >/dev/null 2>&1; then
-		OWNER_ID="$(gh api "repos/$GITHUB_REPOSITORY" --jq .owner.id | tr -d '')"
-		REPO_ID="$(gh api "repos/$GITHUB_REPOSITORY" --jq .id | tr -d '')"
+		OWNER_ID="$(gh api "repos/$GITHUB_REPOSITORY" --jq .owner.id | tr -d '
+')"
+		REPO_ID="$(gh api "repos/$GITHUB_REPOSITORY" --jq .id | tr -d '
+')"
 		if [[ -n "$OWNER_ID" && -n "$REPO_ID" ]]; then
 			OWNER_NAME="${GITHUB_REPOSITORY%%/*}"
 			REPO_NAME="${GITHUB_REPOSITORY##*/}"

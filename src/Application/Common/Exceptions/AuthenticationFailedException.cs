@@ -16,7 +16,7 @@ public class AuthenticationFailedException : Exception
 	}
 
 	public AuthenticationFailedException()
-		: base("The supplied credentials were not accepted.")
+		: base("De opgegeven inloggegevens zijn niet geaccepteerd.")
 	{
 	}
 }

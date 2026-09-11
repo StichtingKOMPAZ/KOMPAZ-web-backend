@@ -117,6 +117,21 @@ internal sealed class OpenApiDocumentTests : IDisposable
 		responses.Should().Contain(expected);
 	}
 
+	/// <summary>
+	/// The logo upload is the one endpoint that takes a file rather than JSON. A generated client that was told
+	/// otherwise would send a JSON body to a handler that reads a form and get a 400 it cannot explain.
+	/// </summary>
+	[Test]
+	public void TheLogoUploadIsDescribedAsAFileUpload()
+	{
+		var body = Operation("/api/organizations/{id}/logo", "put")
+			.GetProperty("requestBody").GetProperty("content");
+
+		var schema = body.GetProperty("multipart/form-data").GetProperty("schema");
+
+		schema.GetProperty("properties").GetProperty("logo").GetProperty("format").GetString().Should().Be("binary");
+	}
+
 	[Test]
 	public void AFailureIsDescribedAsProblemDetails()
 	{

@@ -54,7 +54,7 @@ public class ResendUserInvitationCommandHandler : IRequestHandler<ResendUserInvi
 
 		if (user.Status == UserStatus.Active)
 		{
-			throw new ConflictException("The invitation has already been accepted.");
+			throw new ConflictException("De uitnodiging is al geaccepteerd.");
 		}
 
 		string token = await _tokenIssuer.IssueAsync(user, LoginTokenPurpose.Invitation, cancellationToken);

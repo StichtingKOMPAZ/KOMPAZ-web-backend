@@ -80,6 +80,11 @@ namespace Kompaz.Infrastructure.Persistence.Migrations
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
 
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)");
+
                     b.Property<Guid?>("UpdatedBy")
                         .HasColumnType("uuid");
 
@@ -92,10 +97,54 @@ namespace Kompaz.Infrastructure.Persistence.Migrations
                         .IsUnique()
                         .HasFilter("\"IsPlatform\"");
 
-                    b.HasIndex("Name")
+                    b.HasIndex("Name");
+
+                    b.HasIndex("NormalizedName")
                         .IsUnique();
 
                     b.ToTable("Organizations");
+                });
+
+            modelBuilder.Entity("Kompaz.Domain.Entities.OrganizationLogo", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<int>("ByteCount")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid>("OrganizationId")
+                        .HasColumnType("uuid");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(512)
+                        .HasColumnType("character varying(512)");
+
+                    b.Property<Guid?>("UpdatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("UpdatedUtc")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OrganizationId")
+                        .IsUnique();
+
+                    b.ToTable("OrganizationLogos");
                 });
 
             modelBuilder.Entity("Kompaz.Domain.Entities.RefreshToken", b =>
@@ -221,6 +270,17 @@ namespace Kompaz.Infrastructure.Persistence.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("Kompaz.Domain.Entities.OrganizationLogo", b =>
+                {
+                    b.HasOne("Kompaz.Domain.Entities.Organization", "Organization")
+                        .WithOne("Logo")
+                        .HasForeignKey("Kompaz.Domain.Entities.OrganizationLogo", "OrganizationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Organization");
+                });
+
             modelBuilder.Entity("Kompaz.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("Kompaz.Domain.Entities.User", "User")
@@ -245,6 +305,8 @@ namespace Kompaz.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("Kompaz.Domain.Entities.Organization", b =>
                 {
+                    b.Navigation("Logo");
+
                     b.Navigation("Users");
                 });
 

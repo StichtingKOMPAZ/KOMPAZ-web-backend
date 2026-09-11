@@ -38,9 +38,10 @@ All in resource group `Kompaz`, matching the per-project convention used by `Pha
 | Resource | Notes |
 | --- | --- |
 | `id-kompaz-develop` | User-assigned identity. Reads the vault secrets |
-| `kv-kompaz-develop` | Key Vault, access-policy mode. Five secrets |
+| `kv-kompaz-develop` | Key Vault, access-policy mode. Six secrets |
 | `cae-kompaz` | Container Apps environment, consumption-only — no standing charge |
 | `ca-kompaz-api-develop` | 0.5 vCPU / 1 GiB, one replica |
+| `st-kompazdevelop` | Storage account, Standard_LRS. Holds the `organization-logos` blob container |
 | `log-kompaz` | Log Analytics, 30-day retention |
 | `swa-kompaz-develop` | Static Web App, Free tier |
 
@@ -115,17 +116,37 @@ fine; keep them in step when one changes.
 The script is idempotent and can be re-run. It:
 
 1. Creates the `Kompaz` resource group.
-2. Deploys `foundation.bicep`, creating the identity and the vault, with access policies giving the identity read
-   access to secrets and the person running it write access.
+2. Deploys `foundation.bicep`, creating the identity, the vault and the storage account, with access policies
+   giving the identity read access to secrets and the person running it write access.
 3. Reads `acrphase2`'s admin credentials, which is how the container app authenticates to the registry.
 4. Creates the `develop-kompaz` database and a `kompaz` login role on `igne-postgres`.
-5. Writes five secrets to the vault.
+5. Writes six secrets to the vault, including the storage account key it reads back from the account itself.
 6. Registers the GitHub OIDC application and federated credentials, and prints the three repository secrets to set.
 7. Builds the first image with `az acr build` and deploys `app.bicep`.
 
 **Re-running never regenerates the signing key.** It is created only when absent, because rotating it invalidates
 every access and refresh token in circulation. The same applies to the database password. The Mailtrap credentials
-*are* overwritten each run, since they are passed in.
+*are* overwritten each run, since they are passed in, and so is the storage connection string — it is read back
+from the account, so re-running is also how a rotated account key reaches the application.
+
+### Uploaded files
+
+Organization logos are kept in the `organization-logos` blob container, not in the database: the row records a
+storage key and the bytes live in the container. Two consequences worth knowing before touching either:
+
+- **The application authenticates with the account key, not the managed identity.** That is not a preference —
+  `Storage Blob Data Contributor` needs a role assignment this subscription's constrained Owner cannot make, the
+  same reason the registry uses admin credentials. The key is a vault secret resolved by the identity, so it is
+  not stored in the clear anywhere.
+- **`Storage:ConnectionString` is mandatory outside Development.** Without it the application refuses to start,
+  rather than falling back to the container's own filesystem — which every revision replaces and no two replicas
+  share, so logos would silently disappear. On a developer machine the fallback is the point: files land under
+  `src/Presentation/uploads/` and no emulator is needed.
+
+Nothing is served straight from the container, and public access is off: reads go through
+`GET /api/organizations/{id}/logo`, which checks the caller's token first. A deletion removes the row in its
+transaction and the blob afterwards, so a storage failure leaves an orphaned file — logged with its key — rather
+than a row pointing at nothing.
 
 Omit `-PostgresAdminPassword` and the script prints the role SQL to run by hand instead.
 

@@ -52,8 +52,11 @@ public class GetOrganizationsQueryHandler : IRequestHandler<GetOrganizationsQuer
 		{
 			string search = request.Search.Trim();
 			string pattern = SearchPattern.Contains(search);
+
+			// NormalizedName is already upper-cased, which is what it is for, so the fold the pattern expects on
+			// both sides costs nothing here and the index on it is usable.
 			query = query.Where(organization =>
-				EF.Functions.Like(organization.Name.ToUpper(), pattern, SearchPattern.EscapeCharacter));
+				EF.Functions.Like(organization.NormalizedName, pattern, SearchPattern.EscapeCharacter));
 		}
 
 		return PaginatedList<OrganizationDto>.CreateAsync(

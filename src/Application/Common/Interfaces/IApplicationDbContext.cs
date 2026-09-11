@@ -7,6 +7,8 @@ public interface IApplicationDbContext
 {
 	DbSet<Organization> Organizations { get; }
 
+	DbSet<OrganizationLogo> OrganizationLogos { get; }
+
 	DbSet<User> Users { get; }
 
 	DbSet<LoginToken> LoginTokens { get; }

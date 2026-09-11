@@ -3,7 +3,7 @@ namespace Kompaz.Application.Common.Exceptions;
 public class ForbiddenAccessException : Exception
 {
 	public ForbiddenAccessException()
-		: base("Access to the requested resource is forbidden.")
+		: base("Toegang tot het opgevraagde onderdeel is niet toegestaan.")
 	{
 	}
 

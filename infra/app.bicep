@@ -56,6 +56,7 @@ var dbSecretName = 'kompazdb-connection-string'
 var signingKeySecretName = 'authentication-signing-key'
 var smtpUserNameSecretName = 'smtp-username'
 var smtpPasswordSecretName = 'smtp-password'
+var storageSecretName = 'storage-connection-string'
 
 // The aspnet:10.0 base image listens here by default; the Dockerfile does not override it.
 var containerPort = 8080
@@ -154,6 +155,11 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
           keyVaultUrl: '${keyVaultUri}secrets/${smtpPasswordSecretName}'
           identity: identityResourceId
         }
+        {
+          name: storageSecretName
+          keyVaultUrl: '${keyVaultUri}secrets/${storageSecretName}'
+          identity: identityResourceId
+        }
       ]
     }
     template: {
@@ -185,6 +191,12 @@ resource containerApp 'Microsoft.App/containerApps@2024-03-01' = {
             {
               name: 'Email__Smtp__Password'
               secretRef: smtpPasswordSecretName
+            }
+            {
+              // Without this the application refuses to start outside Development, rather than keeping uploaded
+              // files on a filesystem the next revision throws away.
+              name: 'Storage__ConnectionString'
+              secretRef: storageSecretName
             }
           ]
           probes: [

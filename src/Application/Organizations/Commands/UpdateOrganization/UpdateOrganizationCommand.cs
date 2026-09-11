@@ -21,7 +21,9 @@ public class UpdateOrganizationCommandValidator : AbstractValidator<UpdateOrgani
 
 		RuleFor(command => command.Name)
 			.NotEmpty()
-			.MaximumLength(200);
+			.WithMessage(OrganizationMessages.NameRequired)
+			.MaximumLength(Organization.MaximumNameLength)
+			.WithMessage($"De organisatienaam mag maximaal {Organization.MaximumNameLength} tekens bevatten.");
 	}
 }
 
@@ -45,13 +47,16 @@ public class UpdateOrganizationCommandHandler : IRequestHandler<UpdateOrganizati
 			?? throw new NotFoundException(nameof(Organization), request.Id);
 
 		string name = request.Name.Trim();
+		string normalizedName = Organization.Normalize(name);
 
-		bool nameTaken = await _context.Organizations
-			.AnyAsync(organization => organization.Id != request.Id && organization.Name == name, cancellationToken);
+		// Folded, like the check on create and like the unique index both of them answer to.
+		bool nameTaken = await _context.Organizations.AnyAsync(
+			organization => organization.Id != request.Id && organization.NormalizedName == normalizedName,
+			cancellationToken);
 
 		if (nameTaken)
 		{
-			throw new ConflictException($"An organization named \"{name}\" already exists.");
+			throw new ConflictException(OrganizationMessages.NameTaken);
 		}
 
 		entity.Rename(name);

@@ -22,7 +22,11 @@ internal sealed class CustomExceptionHandler : IExceptionHandler
 		{
 			ValidationException validationException => new ValidationProblemDetails(validationException.Errors)
 			{
-				Status = StatusCodes.Status400BadRequest
+				Status = StatusCodes.Status400BadRequest,
+
+				// Stated, because the framework fills this in with an English sentence of its own. The
+				// exception already carries the one this API uses, so the two cannot drift apart.
+				Title = validationException.Message,
 			},
 			NotFoundException => new ProblemDetails
 			{

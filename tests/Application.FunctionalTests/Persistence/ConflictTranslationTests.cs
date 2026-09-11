@@ -44,8 +44,9 @@ internal sealed class ConflictTranslationTests : ApiTestBase
 		var context = scope.ServiceProvider.GetRequiredService<IApplicationDbContext>();
 		string taken = (await context.Organizations.FirstAsync()).Name;
 
-		var now = Clock.GetUtcNow();
-		context.Organizations.Add(new Organization { Name = taken, CreatedUtc = now, UpdatedUtc = now });
+		// Case changed, so this also states that the index is on the folded name: a second organization may not
+		// take a name that differs from a taken one by case alone.
+		context.Organizations.Add(Organization.Create(taken.ToUpperInvariant()));
 
 		var save = async () => await context.SaveChangesAsync();
 

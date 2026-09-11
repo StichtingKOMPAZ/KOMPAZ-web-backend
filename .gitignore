@@ -16,6 +16,9 @@
 [Rr]elease/
 [Rr]eleases/
 artifacts/
+
+# The development file store. Uploaded logos land here when no blob account is configured.
+src/Presentation/uploads/
 x64/
 x86/
 build/

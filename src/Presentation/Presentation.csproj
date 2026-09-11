@@ -15,6 +15,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The logo served for an organization that has not uploaded one. Embedded so it cannot go missing from a
+         published output the way a loose content file can. -->
+    <EmbeddedResource Include="Common\Assets\KompazLogo.svg" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Application\Application.csproj" />
     <ProjectReference Include="..\Infrastructure\Infrastructure.csproj" />
   </ItemGroup>

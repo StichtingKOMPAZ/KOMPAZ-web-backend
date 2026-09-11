@@ -1,4 +1,4 @@
-﻿using Kompaz.Application.Common.Interfaces;
+using Kompaz.Application.Common.Interfaces;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -60,6 +60,12 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 	public CapturingEmailSender Emails { get; } = new();
 
 	/// <summary>
+	/// The blob container the application under test writes uploaded files to. Held in memory, so a test can ask
+	/// what is stored and — more to the point — what is not, after something was supposed to clean up.
+	/// </summary>
+	public CapturingFileStore Files { get; } = new();
+
+	/// <summary>
 	/// The clock the application runs on. Tests advance it to reach behaviour that is otherwise days away, such as a
 	/// refresh token sliding forward or a session hitting its absolute ceiling.
 	/// </summary>
@@ -99,6 +105,9 @@ internal sealed class CustomWebApplicationFactory : WebApplicationFactory<Kompaz
 		{
 			services.RemoveAll<IAuthenticationEmailSender>();
 			services.AddSingleton<IAuthenticationEmailSender>(Emails);
+
+			services.RemoveAll<IFileStore>();
+			services.AddSingleton<IFileStore>(Files);
 
 			services.RemoveAll<TimeProvider>();
 			services.AddSingleton<TimeProvider>(Clock);

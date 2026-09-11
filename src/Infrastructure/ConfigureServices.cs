@@ -4,6 +4,7 @@ using Kompaz.Infrastructure.Authentication;
 using Kompaz.Infrastructure.Email;
 using Kompaz.Infrastructure.Persistence;
 using Kompaz.Infrastructure.Persistence.Interceptors;
+using Kompaz.Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.EntityFrameworkCore;
@@ -11,6 +12,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
@@ -46,6 +48,7 @@ public static class ConfigureServices
 
 		services.AddAuthenticationServices(configuration);
 		services.AddEmailServices(configuration, environment);
+		services.AddStorageServices(configuration, environment);
 
 		return services;
 	}
@@ -120,6 +123,47 @@ public static class ConfigureServices
 
 		services.AddAuthorizationBuilder();
 	}
+
+	private static void AddStorageServices(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
+	{
+		var section = configuration.GetSection(StorageSettings.SectionName);
+
+		services.AddOptions<StorageSettings>()
+			.Bind(section)
+			.Validate(settings => settings.Validate() is null, DescribeStorageProblem(configuration))
+			.ValidateOnStart();
+
+		var settings = section.Get<StorageSettings>() ?? new StorageSettings();
+
+		if (settings.IsConfigured)
+		{
+			// Singleton: the SDK's client is thread-safe and owns the connection pool, so one per process.
+			services.AddSingleton<IFileStore, BlobFileStore>();
+		}
+		else if (environment.IsDevelopment())
+		{
+			string root = string.IsNullOrWhiteSpace(settings.LocalPath)
+				? Path.Combine(environment.ContentRootPath, "uploads")
+				: settings.LocalPath;
+
+			services.AddSingleton<IFileStore>(provider =>
+				new FileSystemFileStore(root, provider.GetRequiredService<ILogger<FileSystemFileStore>>()));
+		}
+		else
+		{
+			// The fallback keeps files on the container's own filesystem, which is emptied by every revision and is
+			// not shared between replicas — so outside development a real account is mandatory. Refused at startup
+			// rather than at the first upload, because the symptom otherwise is logos that were there yesterday.
+			throw new InvalidOperationException(
+				$"{StorageSettings.SectionName}:{nameof(StorageSettings.ConnectionString)} must be configured outside "
+				+ $"the Development environment (current environment: {environment.EnvironmentName}). Without a blob "
+				+ "account, uploaded files would be written to a filesystem that does not survive a restart.");
+		}
+	}
+
+	private static string DescribeStorageProblem(IConfiguration configuration) =>
+		configuration.GetSection(StorageSettings.SectionName).Get<StorageSettings>()?.Validate()
+		?? $"{StorageSettings.SectionName} is not configured correctly.";
 
 	private static void AddEmailServices(this IServiceCollection services, IConfiguration configuration, IHostEnvironment environment)
 	{

@@ -1,4 +1,4 @@
-﻿using Kompaz.Application.Common.Exceptions;
+using Kompaz.Application.Common.Exceptions;
 using Kompaz.Application.Common.Interfaces;
 using Kompaz.Application.Common.Security;
 using Kompaz.Application.Users;
@@ -61,7 +61,7 @@ public class RedeemLoginTokenCommandHandler : IRequestHandler<RedeemLoginTokenCo
 
 		if (claimed == 0)
 		{
-			throw new AuthenticationFailedException("The sign-in link is invalid, already used, or expired.");
+			throw new AuthenticationFailedException("Deze inloglink is ongeldig, al gebruikt of verlopen.");
 		}
 
 		var loginToken = await _context.LoginTokens

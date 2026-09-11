@@ -31,6 +31,6 @@ public class GetCurrentUserQueryHandler : IRequestHandler<GetCurrentUserQuery, U
 			.Where(user => user.Id == userId && user.DeletedUtc == null)
 			.Select(UserDto.Projection)
 			.SingleOrDefaultAsync(cancellationToken)
-			?? throw new AuthenticationFailedException("The authenticated user no longer exists.");
+			?? throw new AuthenticationFailedException("Deze gebruiker bestaat niet meer.");
 	}
 }

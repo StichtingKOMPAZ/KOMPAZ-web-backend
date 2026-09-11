@@ -63,7 +63,8 @@ public class ApplicationDbContextInitialiser
 
 		var now = _timeProvider.GetUtcNow();
 
-		var organization = new Organization { Name = PlatformOrganizationName, IsPlatform = true };
+		var organization = Organization.Create(PlatformOrganizationName);
+		organization.IsPlatform = true;
 
 		_context.Organizations.Add(organization);
 

@@ -5,7 +5,7 @@ namespace Kompaz.Application.Common.Exceptions;
 public class ValidationException : Exception
 {
 	public ValidationException(IEnumerable<ValidationFailure> failures)
-		: base("One or more validation failures have occurred.")
+		: base("Een of meer velden zijn niet correct ingevuld.")
 	{
 		Errors = failures
 			.GroupBy(failure => failure.PropertyName, failure => failure.ErrorMessage)
